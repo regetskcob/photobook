@@ -1,7 +1,8 @@
 """Build the full photo index (recs_sorted.json) from zip archives and/or folders.
 
-One entry per photo with a stable `idx`, capture time, GPS, size, a
-sharpness score and a thumbnail for review. Built ONCE per project: `idx`
+One entry per photo with a stable `idx`, capture time, GPS, camera, size,
+a sharpness score, whether it is an edited export, and a thumbnail for
+review. Built ONCE per project: `idx`
 values are what book.json refers to, so they must never change afterwards.
 
     python scripts/build_index.py PROJECT_DIR SOURCE [SOURCE ...]
@@ -21,11 +22,27 @@ import numpy as np
 from PIL import ImageOps
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from photo_source import iter_sources, open_image  # noqa: E402
+from photo_source import iter_sources, open_image, read_bytes  # noqa: E402
 
 THUMB_SIZE = 480
 EXIF_IFD, GPS_IFD = 0x8769, 0x8825
 DATETIME_ORIGINAL, DATETIME = 36867, 306
+MAKE, MODEL, SOFTWARE = 271, 272, 305
+
+# Software tags written by photo editors. On the original book about one in
+# fifteen photos was an edited export (Photomator, Instagram) of a moment
+# that also existed as a raw camera file - and the edit was the one to keep.
+EDITORS = ('photomator', 'lightroom', 'photoshop', 'instagram', 'snapseed', 'vsco', 'darkroom',
+           'pixelmator', 'affinity', 'capture one', 'luminar', 'afterlight', 'polarr', 'facetune')
+
+
+def exif_text(exif, tag):
+    value = exif.get(tag)
+    return str(value).strip('\x00 ').strip() if value else None
+
+
+def is_edited(software):
+    return bool(software) and any(e in software.lower() for e in EDITORS)
 
 
 def exif_datetime(exif):
@@ -51,14 +68,24 @@ def exif_gps(exif):
 
 def exiftool_datetime(zip_path, entry):
     """Capture time for files PIL can't read EXIF from (HEIC without
-    pillow-heif), via exiftool when it is installed."""
-    if zip_path is not None or not shutil.which('exiftool'):
+    pillow-heif), via exiftool when it is installed - fed through stdin, so
+    files inside a zip work too."""
+    if not shutil.which('exiftool'):
         return None
-    out = subprocess.run(['exiftool', '-s3', '-DateTimeOriginal', entry], capture_output=True, text=True).stdout.strip()
+    out = subprocess.run(['exiftool', '-s3', '-DateTimeOriginal', '-'], input=read_bytes(zip_path, entry),
+                         capture_output=True).stdout.decode(errors='replace').strip()
     try:
         return datetime.strptime(out[:19], "%Y:%m:%d %H:%M:%S").isoformat()
     except ValueError:
         return None
+
+
+def project_path(path, project_dir):
+    """Relative inside the project folder (so it can move as a whole),
+    absolute for sources elsewhere - a long ../../.. chain breaks as soon
+    as the project folder moves."""
+    rel = os.path.relpath(path, project_dir)
+    return os.path.abspath(path) if rel.startswith('..') else rel
 
 
 def sharpness(im):
@@ -88,14 +115,17 @@ def main():
     recs, failed = [], []
     sources = list(iter_sources(args.sources))
     for n, (zip_path, entry, size) in enumerate(sources, start=1):
-        rec = {'zip': os.path.relpath(zip_path, args.project_dir) if zip_path else None,
-               'entry': entry if zip_path else os.path.relpath(entry, args.project_dir),
+        rec = {'zip': project_path(zip_path, args.project_dir) if zip_path else None,
+               'entry': entry if zip_path else project_path(entry, args.project_dir),
                'bytes': size}
         try:
             im = open_image(zip_path, entry)
             exif = im.getexif()
             rec['datetime'] = exif_datetime(exif) or exiftool_datetime(zip_path, entry)
             rec['gps'] = exif_gps(exif)
+            rec['camera'] = " ".join(filter(None, (exif_text(exif, MAKE), exif_text(exif, MODEL)))) or None
+            rec['software'] = exif_text(exif, SOFTWARE)
+            rec['edited'] = is_edited(rec['software'])
             im = ImageOps.exif_transpose(im).convert('RGB')
             rec['width'], rec['height'] = im.size
             rec['sharpness'] = sharpness(im)
@@ -124,6 +154,9 @@ def main():
         json.dump(recs, f, indent=1, ensure_ascii=False)
     undated = sum(1 for r in recs if not r.get('datetime'))
     print(f"indexed {len(recs)} photos -> {out_path}")
+    edited = sum(1 for r in recs if r.get('edited'))
+    if edited:
+        print(f"{edited} edited exports (\"edited\": true) - usually the version to keep")
     if undated:
         print(f"{undated} without capture time (sorted last) - check them before assigning days")
     for r in failed:

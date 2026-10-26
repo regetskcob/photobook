@@ -47,7 +47,7 @@ intended.
 
 1. After EVERY change to `final_manifest.json` (photos added/removed/
    moved between days), immediately reassign `order` for the WHOLE book
-   (not just the changed day) — see the code snippet in `ENGINE.md`.
+   (not just the changed day) — `python -m photobook renumber book.json`, see `ENGINE.md`.
 2. Before processing `Hinweise:` entries from a `Texte_Vorlage.md`, ALWAYS
    check whether the file still refers to the current photo/number state
    (compare file dates, spot-check one or two photo numbers against the

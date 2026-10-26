@@ -157,6 +157,8 @@ class Book:
         settings, belong to that day. A stale reference used to be silently
         ignored, which cost several review rounds; now it fails loudly."""
         errors = []
+        if not self.pattern or any(v not in (1, 2, 3, 4) for v in self.pattern):
+            errors.append(f"pattern {self.pattern}: grid pages hold 1 to 4 photos")
         orders = defaultdict(list)
         for m in self.manifest:
             orders[m["order"]].append(m["idx"])

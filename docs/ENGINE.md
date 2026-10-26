@@ -30,9 +30,9 @@ and the default resolution:
 
 | Mode | Page numbers | Default DPI | Output |
 |---|---|---|---|
-| `print` | none | 300 | `<prefix>_cover_print.pdf`, `<prefix>_pages_print.pdf` – the upload files |
-| `review` | small, discreet (5 pt) | 150 | same, `_review` – the finished look, for proofreading |
-| `numbers` | big, high-contrast | 110 | `<prefix>_pages_numbers.pdf` – for feedback rounds by number |
+| `print` | none | 300 (JPEG q90) | `<prefix>_cover_print.pdf`, `<prefix>_pages_print.pdf` – the upload files |
+| `review` | small, discreet (5 pt) | 150 (q80) | same, `_review` – the finished look, for proofreading |
+| `numbers` | big, high-contrast | 110 (q70) | `<prefix>_pages_numbers.pdf` – for feedback rounds by number; ~0.4 MB per spread |
 
 `--spreads 0,3-5` and `--kind opener` render a subset in seconds (used to
 need a hand-copied script "head" exec'd up to a cut marker). `--dpi`
@@ -48,8 +48,9 @@ The boxes (`media`, `trim`, `bleed` for cover and interior spread) **must
 come from the publisher's own documented "raw format including bleed"
 export, not from a downloaded proof-sheet template** – see "The
 print-ready export fix" below for why the first measurement was wrong.
-For a new product, have the user export their InDesign document from the
-publisher's placed template with those settings, then:
+For a new product, have the user place the publisher's template in their
+layout program (InDesign, Affinity Publisher, …) and export it with those
+settings, then:
 
 ```bash
 python -m photobook profile-from-pdf cover_export.pdf pages_export.pdf --name "..." > profiles/<name>.json
@@ -274,8 +275,9 @@ template with the documented settings, then read the boxes
    white edges. The interior was re-exported with 3 mm all around.
 
 **Verifying a geometry change cheaply.** Render the cover plus one day
-with a mix of page types (`--kind opener`, `--spreads`), rasterise
-(`pdftoppm -r 150`) and look at it, and re-read the boxes with pypdf –
+with a mix of page types (`--kind opener`, `--spreads`, `--keep-spreads`
+for one PDF per spread), rasterise (`pdftoppm -r 150`, or on macOS
+`sips -s format png spread_012.pdf --out spread_012.png`) and look at it, and re-read the boxes with pypdf –
 don't trust that the numbers you typed are the numbers in the file. Only
 then the full build.
 

@@ -77,6 +77,10 @@ class Renderer:
 
     def load_crop(self, path, box_w_pt, box_h_pt, label="", align="center"):
         with Image.open(path) as src:
+            # the source's real width, taken before draft() shrinks the decode -
+            # the print resolution has to be judged on the file, not on the
+            # reduced copy a low-dpi review build works with
+            full_w = src.size[1] if src.getexif().get(EXIF_ORIENTATION, 1) in (5, 6, 7, 8) else src.size[0]
             # fast approximate downscale during JPEG decode for huge source files
             approx_w = int(box_w_pt / 72 * self.target_dpi * 1.6)
             approx_h = int(box_h_pt / 72 * self.target_dpi * 1.6)
@@ -113,7 +117,7 @@ class Renderer:
         im.close()
         del im
         cw, ch = crop.size
-        dpi = cw / (box_w_pt / 72)
+        dpi = cw * (full_w / iw) / (box_w_pt / 72)
         if dpi < MIN_DPI_WARN:
             self.res_warnings.append((label, path, round(dpi)))
         target_w = int(box_w_pt / 72 * self.target_dpi)

@@ -12,9 +12,12 @@ capture time. Built once, never modified afterward.
   "zip": "Oberstdorf_02.zip",
   "entry": "Oberstdorf_02/IMG_1234.jpeg",
   "datetime": "2026-05-16T09:12:03",
-  "gps": [47.4123, 10.2789],
+  "gps": [48.1374, 11.5755],
   "width": 4032,
   "height": 3024,
+  "camera": "Apple iPhone 15 Pro",
+  "software": "Photomator 3.4.14",
+  "edited": true,
   "sharpness": 182.4,
   "thumb": "thumbs/000092.jpg",
   "bytes": 3145728
@@ -23,10 +26,14 @@ capture time. Built once, never modified afterward.
 
 - `idx`: stable, never-reused ID — every photo reference in `book.json`
   uses it.
-- `zip` / `entry`: the archive and the path inside it, relative to the
-  project folder. For a loose file in a folder, `zip` is `null` and
+- `zip` / `entry`: the archive and the path inside it – relative to the
+  project folder for files inside it, absolute for sources elsewhere (so
+  the project folder can move). For a loose file in a folder, `zip` is `null` and
   `entry` is the file path.
 - `width` / `height`: upright size (camera rotation applied).
+- `camera` / `software`: from EXIF. `edited` is true when `software` names
+  a photo editor (Photomator, Lightroom, Instagram, …) – usually the
+  version of a moment to keep.
 - `sharpness`: variance of the Laplacian (higher = sharper), only
   meaningful relative to the other photos of the set – used to filter out
   shaky shots (`make_manifest.py --min-sharpness`). The original book's

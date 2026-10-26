@@ -37,19 +37,39 @@ a capture time are listed – check them.
 ## 2. Choose photos
 
 Print contact sheets – one image per day with every thumbnail and its
-idx:
+idx; edited exports (Photomator, Lightroom, Instagram, …) get an orange
+frame, and are usually the version to keep. A list of where you were and
+when helps with naming chapters later:
 
 ```bash
 python ~/photobook/scripts/build_contact_sheets.py recs_sorted.json --out contact_sheets
+python ~/photobook/scripts/gps_report.py recs_sorted.json --home LAT,LON > places.md
 ```
+
+What to look for when choosing – series, sharpness, mix of subjects, how
+many photos a page count needs: [`CHOOSING_PHOTOS.md`](CHOOSING_PHOTOS.md).
 
 Write the chosen idx values into `selection.txt`, one per line (`#`
-starts a comment). Then:
+starts a comment). For a quick first draft to correct instead of a blank
+page, let the script pick – one photo per burst, spread through each day,
+sized to the page count:
 
 ```bash
-python ~/photobook/scripts/make_manifest.py . --select selection.txt
+python ~/photobook/scripts/suggest_selection.py . --pages 84
+```
+
+Then:
+
+```bash
+python ~/photobook/scripts/make_manifest.py . --select selection.txt --pages 84 --lang de --name Alps
 # or, for a first look at everything: --all --min-sharpness 40
 ```
+
+Days with fewer than 5 photos (a departure morning) are folded into the
+day before; the trip's last photo becomes the closing spread. `fullres/`
+gets full-resolution copies for print – about 6 MB per photo. The skeleton
+picks the best landscape photo of each day as its opener and the best
+overall as the cover; `--lang de` gives German placeholders and dates.
 
 This groups the photos into days by capture date, numbers them through
 the whole book, writes upright JPEGs to `fullres/`, and creates
@@ -62,7 +82,8 @@ Open `book.json`:
 
 - `profile`: the product geometry. `saal_professional_30x21_landscape`
   ships with the repo. For another product, export the publisher's
-  template from InDesign as "raw format including bleed, no marks" and run
+  template from your layout program (InDesign, Affinity Publisher, …) as
+  "raw format including bleed, no marks" and run
   `python -m photobook profile-from-pdf cover.pdf pages.pdf > my_product.json`.
   Read "The print-ready export fix" in [`ENGINE.md`](ENGINE.md) first –
   never use the downloadable proof-sheet templates.

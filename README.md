@@ -93,6 +93,9 @@ tests/       python -m unittest discover tests (demo book + raw-zip-to-PDF pipel
 
 - [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) – a first book,
   command by command.
+- [`docs/CHOOSING_PHOTOS.md`](docs/CHOOSING_PHOTOS.md) – selection
+  criteria that held up: edited exports, series, sharpness, how many photos
+  a page count needs.
 - [`docs/PIPELINE.md`](docs/PIPELINE.md) – the full path from memory card
   to print file, stage by stage.
 - [`docs/ENGINE.md`](docs/ENGINE.md) – how the engine plans and draws

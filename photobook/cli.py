@@ -10,6 +10,7 @@ import argparse
 import itertools
 import json
 import os
+import shutil
 import sys
 
 from .book import Book, BookError
@@ -17,11 +18,12 @@ from .layout import LayoutError, describe, plan, unplaced_photos
 
 # print: upload files for the publisher - no numbers, full resolution
 # review: proof of the finished look, with the small discreet numbers
-# numbers: big readable numbers, for feedback rounds by number
+# numbers: big readable numbers, for feedback rounds by number - small
+#          enough to send to a phone (about 0.4 MB per spread)
 MODES = {
-    'print': {'tag_numbers': 'off', 'dpi': 300, 'cover': True},
-    'review': {'tag_numbers': 'small', 'dpi': 150, 'cover': True},
-    'numbers': {'tag_numbers': 'big', 'dpi': 110, 'cover': False},
+    'print': {'tag_numbers': 'off', 'dpi': 300, 'jpeg': 90, 'cover': True},
+    'review': {'tag_numbers': 'small', 'dpi': 150, 'jpeg': 80, 'cover': True},
+    'numbers': {'tag_numbers': 'big', 'dpi': 110, 'jpeg': 70, 'cover': False},
 }
 
 
@@ -50,7 +52,8 @@ def cmd_build(args):
     book = _load(args.book)
     pages_spec = plan(book)
     mode = MODES[args.mode]
-    r = Renderer(book, tag_numbers=mode['tag_numbers'], target_dpi=args.dpi or mode['dpi'])
+    r = Renderer(book, tag_numbers=mode['tag_numbers'], target_dpi=args.dpi or mode['dpi'],
+                 jpeg_quality=mode['jpeg'])
 
     spreads = None
     if args.spreads:
@@ -79,6 +82,11 @@ def cmd_build(args):
         cover_out = f"{prefix}_cover_{suffix}.pdf"
         set_print_boxes(raw_cover, p.cover_trim, p.cover_bleed, cover_out)
         print(f"wrote {cover_out}")
+
+    if args.keep_spreads:
+        print(f"one PDF per spread kept in {work_dir} (e.g. for `sips -s format png` on macOS)")
+    else:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
     if r.res_warnings:
         print(f"\n{len(r.res_warnings)} photo(s) below 200 dpi in their box:")
@@ -134,6 +142,8 @@ def cmd_pattern_search(args):
     can be tried against the exact page count."""
     book = _load(args.book)
     values = [int(v) for v in args.values.split(',')]
+    if any(v not in (1, 2, 3, 4) for v in values):
+        raise BookError("--values: grid pages hold 1 to 4 photos")
     hits = []
     for length in (int(n) for n in args.lengths.split(',')):
         for combo in itertools.product(values, repeat=length):
@@ -141,12 +151,20 @@ def cmd_pattern_search(args):
                 pages_spec = plan(book, pattern=list(combo))
             except LayoutError:
                 continue
-            # single-photo pages that were not asked for read as orphans
+            # Single-photo pages nobody asked for ("orphans"): a batch cut short
+            # at a hero, group or day end, or a 2-photo page fix_parity split
+            # in two. Fewer is better; solo_fullbleed pages don't count.
             orphans = sum(1 for s in pages_spec if s[0] == 'grid1' and len(s) == 2) - \
                 sum(len(d['solo_fullbleed']) for d in book.days)
             hits.append((orphans, -sum(combo) / len(combo), list(combo)))
     hits.sort()
     print(f"{len(hits)} PATTERNs hit exactly {book.page_count} pages (fewest orphan single-photo pages first):")
+    if not hits:
+        planned = len(plan(book, check_page_count=False))
+        # grids hold 1-4 photos, so too many pages can only be fixed by fewer photos
+        hint = ("remove photos" if planned > book.page_count
+                else "add photos, or allow single-photo pages with `--values 1,2,3,4`")
+        print(f"  none - the plan currently has {planned} pages: {hint}.")
     for orphans, neg_avg, combo in hits[:args.limit]:
         print(f"  {combo}  orphans={orphans}  avg photos/page={-neg_avg:.2f}")
     print(f"current: {book.pattern}")
@@ -187,6 +205,8 @@ def main(argv=None):
     b.add_argument('--dpi', type=int, help='target resolution (default: print 300, review 150, numbers 110)')
     b.add_argument('--spreads', help="render only these spreads, e.g. '0,3-5' (0-based)")
     b.add_argument('--kind', help="render only spreads with this page kind, e.g. 'opener'")
+    b.add_argument('--keep-spreads', action='store_true',
+                   help='keep one PDF per spread next to the output (to rasterise single spreads)')
     b.set_defaults(func=cmd_build)
 
     p = sub.add_parser('pages', help='print the page plan')
@@ -201,7 +221,7 @@ def main(argv=None):
     s = sub.add_parser('pattern-search', help='find PATTERNs that hit the page count')
     s.add_argument('book')
     s.add_argument('--lengths', default='4,5,6')
-    s.add_argument('--values', default='2,3,4')
+    s.add_argument('--values', default='2,3,4', help='photos per grid page to try (1-4)')
     s.add_argument('--limit', type=int, default=20)
     s.set_defaults(func=cmd_pattern_search)
 

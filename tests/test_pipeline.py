@@ -40,6 +40,8 @@ class PipelineTest(unittest.TestCase):
                 exif.get_ifd(0x8769)[36867] = (t0 + timedelta(hours=i * 3)).strftime("%Y:%m:%d %H:%M:%S")
                 if i == 4:
                     exif[0x0112] = 6  # stored sideways, tagged "rotate 90"
+                if i == 7:
+                    exif[305] = "Photomator 3.4.14"  # an edited export
                 buf = io.BytesIO()
                 im.save(buf, "JPEG", exif=exif)
                 z.writestr(f"cam/IMG_{i:04d}.JPG", buf.getvalue())
@@ -61,6 +63,37 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(recs[0]["datetime"], "2026-05-15T09:00:00")
         rotated = next(r for r in recs if r["entry"].endswith("IMG_0004.JPG"))
         self.assertEqual((rotated["width"], rotated["height"]), (900, 1200))
+
+    def test_index_flags_edited_exports(self):
+        recs = self.load("recs_sorted.json")
+        edited = [r["entry"] for r in recs if r["edited"]]
+        self.assertEqual(edited, ["cam/IMG_0007.JPG"])
+
+    def test_suggest_selection_picks_and_protects_existing_file(self):
+        project = os.path.join(self.tmp, "suggest")
+        os.makedirs(project)
+        shutil.copy(os.path.join(self.project, "recs_sorted.json"), project)
+        shutil.copytree(os.path.join(self.project, "thumbs"), os.path.join(project, "thumbs"))
+        run("scripts/suggest_selection.py", project, "--count", "12", "--min-long-side", "0")
+        with open(os.path.join(project, "selection.txt")) as f:
+            picked = [line for line in f if line[:1].isdigit()]
+        self.assertTrue(8 <= len(picked) <= 12, len(picked))
+        # an existing selection may hold the user's own choices
+        result = subprocess.run([sys.executable, "scripts/suggest_selection.py", project], cwd=ROOT,
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_gps_report_runs(self):
+        index = self.load("recs_sorted.json")
+        index[0]["gps"] = [48.14, 11.58]
+        index[1]["gps"] = [48.15, 11.59]
+        path = os.path.join(self.project, "gps_variant.json")
+        with open(path, "w") as f:
+            json.dump(index, f)
+        out = subprocess.run([sys.executable, "scripts/gps_report.py", path, "--gap-minutes", "240"], cwd=ROOT, check=True,
+                             capture_output=True, text=True).stdout
+        self.assertIn("2 of 30 photos have GPS data", out)
+        self.assertIn("(2 photos)", out)
 
     def test_manifest_groups_days_and_writes_upright_files(self):
         manifest = self.load("final_manifest.json")
