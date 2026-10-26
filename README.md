@@ -1,4 +1,4 @@
-# claude-book-helper
+# photobook
 
 A small layout engine that turns a curated photo selection plus a
 `book.json` (texts, captions, which photo goes where) into print-ready
@@ -14,6 +14,7 @@ The engine contains no book data and no product geometry: a book is a
 ## Quickstart
 
 ```bash
+git clone https://github.com/regetskcob/photobook.git && cd photobook
 pip install -e .                                  # or: pip install reportlab pillow numpy pypdf
 python examples/demo/make_demo_photos.py          # placeholder photos for the demo book
 python -m photobook pages examples/demo/book.json # page plan, no rendering

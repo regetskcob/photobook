@@ -8,7 +8,7 @@ check before moving on. Background on every mechanism:
 ## 0. Install
 
 ```bash
-git clone <this repo> && cd <repo>
+git clone https://github.com/regetskcob/photobook.git ~/photobook && cd ~/photobook
 pip install -e .            # Python 3.9+; installs reportlab, pillow, numpy, pypdf
 ```
 
@@ -26,7 +26,7 @@ mkdir raw && cp ~/Downloads/*.zip raw/      # camera/phone exports, zipped or as
 ## 1. Index every photo
 
 ```bash
-python <repo>/scripts/build_index.py . raw/*.zip raw/some_folder
+python ~/photobook/scripts/build_index.py . raw/*.zip raw/some_folder
 ```
 
 Writes `recs_sorted.json` (one entry per photo: stable `idx`, capture time,
@@ -40,14 +40,14 @@ Print contact sheets – one image per day with every thumbnail and its
 idx:
 
 ```bash
-python <repo>/scripts/build_contact_sheets.py recs_sorted.json --out contact_sheets
+python ~/photobook/scripts/build_contact_sheets.py recs_sorted.json --out contact_sheets
 ```
 
 Write the chosen idx values into `selection.txt`, one per line (`#`
 starts a comment). Then:
 
 ```bash
-python <repo>/scripts/make_manifest.py . --select selection.txt
+python ~/photobook/scripts/make_manifest.py . --select selection.txt
 # or, for a first look at everything: --all --min-sharpness 40
 ```
 
