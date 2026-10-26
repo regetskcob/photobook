@@ -24,6 +24,10 @@ DEFAULT_STYLE = {
     "font_files": {},
     "dark_color": [0.11, 0.13, 0.16],  # title, opener and closing pages
     "text_color": [0.18, 0.18, 0.18],  # paragraphs on white pages
+    # chapter openers - the defaults are the look of the original book
+    "opener_align": "left",       # or "center": text centred left of the inset
+    "opener_number": True,        # the big ghosted chapter number
+    "opener_photo_side": "right",  # or "left": chapter photo on the left page
     "chapter_icon": True,
     # The chapter-opener ridgeline was tuned over many rounds and then
     # switched off for the Oberstdorf book - kept behind a flag so the work
@@ -76,6 +80,11 @@ class Book:
         self.output_prefix = data.get("output_prefix", "book")
         self.day_label = data.get("day_label", "Day {n}")
         self.fill_odd_days_with_blank = bool(data.get("fill_odd_days_with_blank", False))
+        # Layout rules. 1 is what the original book was printed with and stays
+        # the default so an existing book.json renders unchanged; 2 (written
+        # by make_manifest.py) stacks landscape pairs and splits the largest
+        # grid page when a day's page count is odd - see docs/ENGINE.md.
+        self.layout = data.get("layout", 1)
         self.style = dict(DEFAULT_STYLE, **data.get("style", {}))
         self.profile = Profile.load(data["profile"], self.dir)
 
@@ -114,6 +123,9 @@ class Book:
         self.front = data.get("front", {})
         self.closing = data["closing"]
         self.page_swaps = data.get("page_swaps", [])
+        # groups of idx that may appear together although they look alike
+        # (see photobook/similarity.py) - deliberate, never a default
+        self.allow_duplicates = data.get("allow_duplicates", [])
         self.photos = {int(k): v for k, v in data.get("photos", {}).items()}
 
         self._validate()
@@ -151,12 +163,98 @@ class Book:
     def text_align(self, idx):
         return self._opt(idx, "text_align", "left")
 
+    def reserved_photos(self):
+        """Photos with a fixed page outside the chapters: they never also go
+        into their day's grids."""
+        return {self.closing["photo"]} | ({self.front["photo"]} if self.front.get("photo") is not None else set())
+
     # ---- validation ----
+    def texts(self):
+        """(where, text) for every string that ends up on a page."""
+        out = []
+        for key in ("title", "tagline"):
+            out.append((f"front.{key}", self.front.get(key, "")))
+        out += [("front.intro", t) for t in self.front.get("intro", [])]
+        for key in ("title", "subtitle"):
+            out.append((f"cover.{key}", self.cover.get(key, "")))
+        for key in ("caption", "lead", "headline", "date"):
+            value = self.closing.get(key) or ""
+            out += [(f"closing.{key}", v) for v in (value if isinstance(value, list) else [value])]
+        for d in self.days:
+            for key in ("title", "date", "label"):
+                out.append((f"day {d['id']} {key}", d.get(key) or ""))
+            out += [(f"day {d['id']} intro", t) for t in d["intro"]]
+            for key, cap in (("hero caption", (d.get("hero") or {}).get("caption")),
+                             ("opener_caption", d.get("opener_caption"))):
+                cap = cap or ""
+                out += [(f"day {d['id']} {key}", t) for t in (cap if isinstance(cap, list) else [cap])]
+        for idx, opts in self.photos.items():
+            for key in ("caption", "text", "spread_caption"):
+                value = opts.get(key) or ""
+                out += [(f"photos.{idx}.{key}", t) for t in (value if isinstance(value, list) else [value])]
+        return out
+
+    def _check_text_glyphs(self):
+        """Characters the fonts can't draw would print as gaps or boxes.
+        The built-in PDF fonts cover Western European text (cp1252) only;
+        a TTF in style.font_files covers whatever its glyphs cover."""
+        files = self.style.get("font_files") or {}
+        if files:
+            from reportlab.pdfbase.ttfonts import TTFont
+            covered = set()
+            for i, path in enumerate(files.values()):
+                try:
+                    font = TTFont(f"glyph-check-{i}", self.resolve(path))
+                except Exception as e:
+                    return [f"style.font_files: cannot load {path}: {e}"]
+                cmap = set(font.face.charToGlyph)
+                covered = cmap if not covered else covered & cmap
+
+            def drawable(ch):
+                return ord(ch) in covered
+        else:
+            def drawable(ch):
+                try:
+                    ch.encode('cp1252')
+                    return True
+                except UnicodeEncodeError:
+                    return False
+        errors = []
+        for where, text in self.texts():
+            bad = sorted({ch for ch in text if not ch.isspace() and not drawable(ch)})
+            if bad:
+                errors.append(f"{where}: the font can't draw {' '.join(bad)} - "
+                              + ("pick a font that has them" if files else "set style.font_files to a TTF that has them"))
+        return errors
+
     def _validate(self):
         """Every idx the config points at must exist - and, for day-level
         settings, belong to that day. A stale reference used to be silently
         ignored, which cost several review rounds; now it fails loudly."""
         errors = []
+        if not self.pattern or any(v not in (1, 2, 3, 4) for v in self.pattern):
+            errors.append(f"pattern {self.pattern}: grid pages hold 1 to 4 photos")
+        # the same photo twice, detectable without looking at the pixels
+        seen_idx, seen_file, seen_entry = set(), {}, {}
+        for m in self.manifest:
+            if m["idx"] in seen_idx:
+                errors.append(f"idx {m['idx']} is listed twice in the manifest")
+            seen_idx.add(m["idx"])
+            if m["idx"] in self.photo_files:
+                path = os.path.normpath(self.resolve(self.photo_files[m["idx"]]))
+                if path in seen_file:
+                    errors.append(f"idx {seen_file[path]} and {m['idx']} use the same file {self.photo_files[m['idx']]}")
+                seen_file.setdefault(path, m["idx"])
+            if m.get("zip") is not None and m.get("entry"):
+                key = (os.path.basename(m["zip"]), m["entry"])
+                if key in seen_entry:
+                    errors.append(f"idx {seen_entry[key]} and {m['idx']} are the same archive entry {m['entry']}")
+                seen_entry.setdefault(key, m["idx"])
+        for group in self.allow_duplicates:
+            for idx in group:
+                if idx not in self.by_idx:
+                    errors.append(f"allow_duplicates: idx {idx} is not in the manifest")
+
         orders = defaultdict(list)
         for m in self.manifest:
             orders[m["order"]].append(m["idx"])
@@ -169,25 +267,53 @@ class Book:
             day_idxs = {m["idx"] for m in self.by_day.get(day_id, [])}
             if not day_idxs:
                 errors.append(f"day {day_id}: no photos in the manifest")
-            refs = [("opener", d.get("opener")), ("inset", d.get("inset")),
+            inset = d.get("inset")
+            refs = [("opener", d.get("opener")), ("inset", inset if inset is not False else None),
                     ("panorama_after_opener", d.get("panorama_after_opener")),
                     ("mid_day_panorama", d.get("mid_day_panorama"))]
             if d.get("hero"):
                 refs.append(("hero", d["hero"]["photo"]))
             refs += [("solo_fullbleed", i) for i in d["solo_fullbleed"]]
-            for g in d["groups"]:
+            for n, g in enumerate(d["groups"], start=1):
                 if g.get("style") not in GROUP_STYLES:
                     errors.append(f"day {day_id}: unknown group style {g.get('style')!r} (one of {GROUP_STYLES})")
-                refs += [("groups", i) for i in g["photos"]]
+                refs += [(f"group {n}", i) for i in g["photos"]]
+            # One page role per photo: a photo that is both the opener and the
+            # hero used to vanish from the hero's page without a word.
+            roles = defaultdict(list)
+            for what, idx in refs:
+                if idx is not None:
+                    roles[idx].append(what)
+            for idx, what in roles.items():
+                if len(what) > 1:
+                    errors.append(f"day {day_id}: idx {idx} has more than one role ({', '.join(what)})")
             for what, idx in refs:
                 if idx is not None and idx not in day_idxs:
                     errors.append(f"day {day_id}: {what} idx {idx} is not a photo of this day")
                 if idx is not None and idx == self.data["closing"]["photo"]:
                     errors.append(f"day {day_id}: {what} idx {idx} is also the closing photo")
-            if d.get("inset") is not None and d.get("opener") is None:
+                if idx is not None and idx == self.data.get("front", {}).get("photo"):
+                    errors.append(f"day {day_id}: {what} idx {idx} is also the photo next to the title")
+            if inset not in (None, False) and d.get("opener") is None:
                 errors.append(f"day {day_id}: an inset needs an opener")
+            color = d.get("color")
+            if color is not None and not (isinstance(color, list) and len(color) == 3
+                                          and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in color)):
+                errors.append(f"day {day_id}: color must be [r, g, b] with values 0-1")
+            if d.get("opener_caption") and d.get("opener") is None:
+                errors.append(f"day {day_id}: opener_caption needs an opener")
 
-        for what, idx in (("cover", self.cover["photo"]), ("closing", self.closing["photo"])):
+        for key, allowed in (("opener_align", ("left", "center")), ("opener_photo_side", ("right", "left"))):
+            if self.style[key] not in allowed:
+                errors.append(f"style.{key}: one of {allowed}")
+        if self.layout not in (1, 2):
+            errors.append(f"layout {self.layout!r}: must be 1 or 2")
+        if self.front.get("photo") is not None and self.front.get("image"):
+            errors.append("front: give either 'photo' (an idx) or 'image' (a file), not both")
+        named = [("cover", self.cover["photo"]), ("closing", self.closing["photo"])]
+        if self.front.get("photo") is not None:
+            named.append(("front", self.front["photo"]))
+        for what, idx in named:
             if idx not in self.by_idx:
                 errors.append(f"{what} photo idx {idx} is not in the manifest")
         for swap in self.page_swaps:
@@ -200,9 +326,17 @@ class Book:
                 self.warnings.append(f"photos.{idx}: not in the manifest - stale entry, it has no effect")
             if opts.get("crop", "center") not in CROP_ALIGNS:
                 errors.append(f"photos.{idx}: crop must be one of {CROP_ALIGNS}")
+        missing = []
         for m in self.manifest:
             if m["idx"] not in self.photo_files:
                 errors.append(f"photo idx {m['idx']}: no file (neither manifest 'file' nor photo_map)")
+            elif not os.path.isfile(self.resolve(self.photo_files[m["idx"]])):
+                missing.append(f"idx {m['idx']} ({self.photo_files[m['idx']]})")
+        if missing:
+            # found now rather than minutes into a build
+            errors.append(f"{len(missing)} photo file(s) not found: " + ", ".join(missing[:8])
+                          + (" …" if len(missing) > 8 else ""))
+        errors += self._check_text_glyphs()
 
         if errors:
             raise BookError("book config is invalid:\n  " + "\n  ".join(errors))

@@ -67,6 +67,82 @@ class DemoBookTest(unittest.TestCase):
         with self.assertRaisesRegex(LayoutError, "expected"):
             plan(Book(self._variant(change)))
 
+    def test_photo_with_two_roles_fails_loudly(self):
+        def change(d):
+            d["days"][0]["hero"] = {"photo": d["days"][0]["opener"], "caption": "x"}
+        with self.assertRaisesRegex(BookError, "more than one role"):
+            Book(self._variant(change))
+
+    def test_text_the_font_cannot_draw_fails(self):
+        def change(d):
+            d["days"][0]["title"] = "Łódź"
+        with self.assertRaisesRegex(BookError, "can't draw Ł ź"):
+            Book(self._variant(change))
+
+    def test_typographic_quotes_and_dashes_are_fine(self):
+        def change(d):
+            d["days"][0]["title"] = "„Ankunft“ – it’s … · fine"
+        Book(self._variant(change))
+
+    def test_missing_photo_file_fails_before_building(self):
+        photo = os.path.join(self.demo, "photos", "0005.jpg")
+        os.rename(photo, photo + ".bak")
+        try:
+            with self.assertRaisesRegex(BookError, "not found: idx 5"):
+                Book(self.book_path)
+        finally:
+            os.rename(photo + ".bak", photo)
+
+    def test_unreadable_photo_is_named_not_a_traceback(self):
+        from photobook.layout import placed_idxs
+        from photobook.similarity import find_duplicates
+        photo = os.path.join(self.demo, "photos", "0007.jpg")
+        shutil.copy(photo, photo + ".bak")
+        try:
+            with open(photo, "wb") as f:
+                f.write(b"not a jpeg")
+            book = Book(self.book_path)
+            with self.assertRaisesRegex(BookError, "photo idx 7: cannot read"):
+                find_duplicates(book, placed_idxs(plan(book)))
+        finally:
+            os.replace(photo + ".bak", photo)
+
+    def test_front_photo_leaves_its_day(self):
+        def change(d):
+            d["front"].pop("image")
+            d["front"]["photo"] = 3
+            d["pages"] = 0
+        book = Book(self._variant(change))
+        pages = plan(book, check_page_count=False)
+        self.assertEqual(pages[1][0], "front_photo")
+        grid_idxs = {m["idx"] for spec in pages if spec[0].startswith("grid") for m in spec[1]}
+        self.assertNotIn(3, grid_idxs)
+
+    def test_opener_options(self):
+        def change(d):
+            d["style"] = {"opener_align": "center", "opener_photo_side": "left", "opener_number": False}
+            d["days"][0].update(inset=False, opener_caption=["Line one", "line two"], color=[0.2, 0.3, 0.25])
+            d["pages"] = 0
+        book = Book(self._variant(change))
+        pages = plan(book, check_page_count=False)  # also runs the spread-pairing check
+        first = [spec for spec in pages if spec[0] in ("opener", "opener_photo")][:2]
+        self.assertEqual([spec[0] for spec in first], ["opener_photo", "opener"])
+        self.assertEqual(first[0][2]["caption"], ["Line one", "line two"])
+        self.assertIsNone(first[1][2]["inset"])
+        def with_page_count(d):
+            change(d)
+            d["pages"] = len(pages)
+        out = os.path.join(self.tmp, "opener_out")
+        subprocess.run([sys.executable, "-m", "photobook", "build", self._variant(with_page_count), "--mode", "review",
+                        "--kind", "opener", "--dpi", "30", "--out", out], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+
+    def test_bad_opener_options_are_named(self):
+        def change(d):
+            d["style"] = {"opener_align": "middle"}
+            d["days"][1]["color"] = [30, 40, 50]
+        with self.assertRaisesRegex(BookError, "opener_align.*\n.*|color must be"):
+            Book(self._variant(change))
+
     def test_build_print_sets_trim_and_bleed_boxes(self):
         out = os.path.join(self.tmp, "out")
         subprocess.run([sys.executable, "-m", "photobook", "build", self.book_path, "--mode", "print",

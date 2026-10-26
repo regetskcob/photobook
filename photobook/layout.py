@@ -8,7 +8,7 @@ PATTERN search fast.
 A logical page is a tuple `(kind, payload, extra)`; two consecutive logical
 pages form one physical spread (left, right). Kinds:
 
-  title, front_image            the opening spread
+  title, front_image|front_photo  the opening spread
   opener, opener_photo          a day's two-page chapter opener
   spread_image (x2)             a two-page panorama, left and right half
   gridN                         a grid page with N photos (N=1: full-bleed)
@@ -17,6 +17,9 @@ pages form one physical spread (left, right). Kinds:
   blank                         filler for a day with an odd page count
                                 (only with fill_odd_days_with_blank)
 """
+
+
+import itertools
 
 
 class LayoutError(Exception):
@@ -92,21 +95,25 @@ def build_day_units(remaining, pattern, hero_idx=None, by_idx_item=None, solo_id
     return units
 
 
-def fix_parity(units, where=""):
+def fix_parity(units, where="", largest=False):
     """The opener (and an optional panorama) is always exactly 2 pages, so a
     day stays a whole number of spreads only if its count of single-page
     units is even - otherwise the NEXT day's opener would straddle two
     spreads. If odd, split the first plain grid batch with >=2 photos into
     two smaller ones, without dropping or duplicating a photo. Hand-placed
-    groups (units carrying a style dict) are never split."""
+    groups (units carrying a style dict) are never split.
+
+    `largest` (layout 2) splits the page with the most photos instead of the
+    first one: a 4-photo page becomes two 2-photo pages, where splitting a
+    2-photo page made two full-page singles nobody asked for."""
     if len(units) % 2 == 0:
         return units
-    for i, unit in enumerate(units):
-        kind = unit[0]
-        if kind == 'grid' and len(unit) == 2 and len(unit[1]) >= 2:
-            payload = unit[1]
-            half = len(payload) // 2
-            return units[:i] + [('grid', payload[:half]), ('grid', payload[half:])] + units[i + 1:]
+    splittable = [i for i, u in enumerate(units) if u[0] == 'grid' and len(u) == 2 and len(u[1]) >= 2]
+    if splittable:
+        i = max(splittable, key=lambda k: len(units[k][1])) if largest else splittable[0]
+        payload = units[i][1]
+        half = len(payload) // 2
+        return units[:i] + [('grid', payload[:half]), ('grid', payload[half:])] + units[i + 1:]
     raise LayoutError(f"{where}: odd number of pages and no plain grid page with 2+ photos to split - "
                       "add or remove a photo, or change 'pattern', 'solo_fullbleed' or 'groups'")
 
@@ -119,21 +126,21 @@ def _day_pages(book, day, pattern):
     hero = day.get("hero")
     hero_idx = hero["photo"] if hero else None
     pano_idx = day.get("panorama_after_opener")
-    # the closing photo gets its own page at the end of the book
-    closing_idx = book.closing["photo"]
+    # the closing photo (and a photo next to the title) has its own page
+    reserved = book.reserved_photos()
 
     # The opener's small inset teaser is picked up front (the first
     # chronological photo of the day, excluding opener and panorama) so it
     # can be excluded from the grid pool - otherwise it shows up twice.
     inset_m = None
-    if op_idx is not None:
+    if op_idx is not None and day.get("inset") is not False:  # false: no inset on this opener
         if day.get("inset") is not None:
             inset_m = by_idx_item[day["inset"]]
         else:
-            candidates = [m for m in items if m['idx'] not in (op_idx, pano_idx, closing_idx)]
+            candidates = [m for m in items if m['idx'] not in {op_idx, pano_idx} | reserved]
             inset_m = candidates[0] if candidates else None
 
-    exclude = {op_idx, pano_idx, closing_idx} | ({inset_m['idx']} if inset_m else set())
+    exclude = {op_idx, pano_idx} | reserved | ({inset_m['idx']} if inset_m else set())
     # The hero, solo, group and mid-day-panorama photos deliberately stay in
     # `remaining`: build_day_units places them at their chronological spot.
     remaining = [m for m in items if m['idx'] not in exclude]
@@ -145,7 +152,7 @@ def _day_pages(book, day, pattern):
     )
     def parity(units, where):
         try:
-            return fix_parity(units, where)
+            return fix_parity(units, where, largest=book.layout >= 2)
         except LayoutError:
             # early drafts: rather a visible blank page than no plan at all
             if book.fill_odd_days_with_blank:
@@ -173,8 +180,13 @@ def _day_pages(book, day, pattern):
     pages = []
     if op_idx is not None:
         m0 = by_idx_item[op_idx]
-        pages.append(('opener', m0, {'day': day, 'inset': inset_m}))
-        pages.append(('opener_photo', m0))
+        text_page = ('opener', m0, {'day': day, 'inset': inset_m})
+        photo_page = ('opener_photo', m0, {'caption': day['opener_caption']}) if day.get('opener_caption') \
+            else ('opener_photo', m0)
+        if book.style["opener_photo_side"] == "left":
+            pages += [photo_page, text_page]
+        else:
+            pages += [text_page, photo_page]
     if pano_idx is not None:
         pm = by_idx_item[pano_idx]
         pages.append(('spread_image', pm))
@@ -201,7 +213,7 @@ def entry_idxs(spec):
     kind = spec[0]
     if kind.startswith('grid'):
         return {m['idx'] for m in spec[1]}
-    if kind in ('opener', 'opener_photo', 'closing_photo', 'hero_float', 'spread_image'):
+    if kind in ('opener', 'opener_photo', 'closing_photo', 'hero_float', 'spread_image', 'front_photo'):
         return {spec[1]['idx']}
     return set()
 
@@ -234,12 +246,17 @@ def check(pages_spec, page_count=None):
         raise LayoutError(f"expected {page_count} pages, got {len(pages_spec)} - adjust 'pattern' (see `photobook pattern-search`)")
     if len(pages_spec) % 2:
         raise LayoutError(f"odd number of pages ({len(pages_spec)}) - pages come in spreads")
-    # every opener / panorama must start on a left page (even index)
+    # every opener spread / panorama must start on a left page (even index)
     prev_kind = None
     for i, spec in enumerate(pages_spec):
         kind = spec[0]
-        if kind in ('opener', 'spread_image') and kind != prev_kind and i % 2 != 0:
+        if kind == 'spread_image' and kind != prev_kind and i % 2 != 0:
             raise LayoutError(f"page-pairing bug: {kind} at page {i} does not start on a left page")
+        if kind == 'opener':
+            # the chapter photo sits right after the text page, or right before it
+            start = i - 1 if prev_kind == 'opener_photo' else i
+            if start % 2 != 0:
+                raise LayoutError(f"page-pairing bug: the opener spread at page {start} does not start on a left page")
         prev_kind = kind
     # A photo used as opener/hero/inset/closing must never show up again in a
     # grid. 'opener' carries its photo only as metadata (it is drawn once,
@@ -250,7 +267,7 @@ def check(pages_spec, page_count=None):
         kind = spec[0]
         if kind.startswith('grid'):
             photos = spec[1]
-        elif kind in ('opener_photo', 'hero_float', 'closing_photo'):
+        elif kind in ('opener_photo', 'hero_float', 'closing_photo', 'front_photo'):
             photos = [spec[1]]
         elif kind == 'opener':
             photos = [spec[2]['inset']] if spec[2].get('inset') else []
@@ -265,7 +282,8 @@ def check(pages_spec, page_count=None):
 def plan(book, pattern=None, check_page_count=True):
     """The book's full logical page list."""
     pattern = pattern or book.pattern
-    pages_spec = [('title',), ('front_image',)]
+    front_idx = book.front.get("photo")
+    pages_spec = [('title',), ('front_photo', book.by_idx[front_idx]) if front_idx is not None else ('front_image',)]
     for day in book.days:
         pages_spec += _day_pages(book, day, pattern)
     # Mirrors the opening spread: photo on the left, farewell text closes
@@ -284,12 +302,42 @@ def plan(book, pattern=None, check_page_count=True):
     return pages_spec
 
 
-def unplaced_photos(book, pages_spec):
+def placed_idxs(pages_spec):
+    """Every photo drawn somewhere in the interior, insets included."""
     placed = set()
     for spec in pages_spec:
         placed |= entry_idxs(spec)
         if spec[0] == 'opener' and spec[2].get('inset'):
             placed.add(spec[2]['inset']['idx'])
+    return placed
+
+
+def search_patterns(book, lengths=(4, 5, 6), values=(2, 3, 4)):
+    """Every cyclic pattern of the given lengths and batch sizes that plans
+    to exactly the book's page count, best first, as (orphans, average
+    photos per grid page, pattern). Planning does no image I/O, so this
+    tries hundreds of candidates per second.
+
+    Orphans are single-photo pages nobody asked for: a batch cut short at a
+    hero, group or day end, or a page split for parity. solo_fullbleed
+    pages don't count."""
+    asked = sum(len(d['solo_fullbleed']) for d in book.days)
+    hits = []
+    for length in lengths:
+        for combo in itertools.product(values, repeat=length):
+            try:
+                pages_spec = plan(book, pattern=list(combo))
+            except LayoutError:
+                continue
+            orphans = sum(1 for s in pages_spec if s[0] == 'grid1' and len(s) == 2) - asked
+            hits.append((orphans, sum(combo) / len(combo), list(combo)))
+    # fewest orphans; then the fullest pages, which leave the photos bigger elsewhere
+    hits.sort(key=lambda h: (h[0], -h[1]))
+    return hits
+
+
+def unplaced_photos(book, pages_spec):
+    placed = placed_idxs(pages_spec)
     return [m for m in book.manifest if m['idx'] not in placed]
 
 

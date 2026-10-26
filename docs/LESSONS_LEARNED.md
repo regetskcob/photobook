@@ -93,6 +93,55 @@ for fast lookup. Fuller explanations are linked in each item.
   settings, not from whatever template file happens to already be on
   disk.
 
+- **An edited export usually beats the camera original** – about one in
+  fifteen photos in the original archive was a Photomator or Instagram
+  export of a moment that also existed unedited; the edit was the one to
+  keep. `build_index.py` marks them from the EXIF software tag. See
+  [`CHOOSING_PHOTOS.md`](CHOOSING_PHOTOS.md).
+- **Don't upscale a low-resolution image to silence the DPI check** – the
+  original book's map was a generated illustration at ~1,500 px (≈127 dpi
+  full-page). Keeping it at native size kept the warning visible and the
+  decision with the user; an upscaled file would have looked "fine" in the
+  log and soft in print.
+- **Check photo order against GPS time, not just the camera clock** – when
+  pages looked out of sequence, comparing EXIF time with GPS time showed the
+  clocks were right and the bug was in the layout (a second highlight
+  jumping to the start of its day). `scripts/gps_report.py` lists each
+  day's stops with times.
+- **The "InDesign export" can come from any layout program** – the Saal
+  geometry was in fact exported from Affinity Publisher. What matters is
+  "raw format incl. bleed, no marks", not the tool.
+
+- **Measure resolution on the file, not on a reduced decode** – the
+  renderer lets JPEG decoding shrink big photos for low-dpi review builds.
+  The DPI check ran on that shrunken copy, so a 24 MP camera photo reported
+  ~190 dpi: 41 false warnings on a real book, hiding the 2 real ones. It
+  now uses the source's own size.
+- **Low colour saturation isn't black and white** – fog, cloud and snow
+  photos are nearly grey. A saturation threshold that looked safe (0.06)
+  flagged 99 colour photos of a mountain trip; real b/w edits sit below
+  0.01.
+- **A photo count that is too low can still "fit" the page count** – only
+  through many single-photo pages. Estimate photos from the page count
+  (see [`CHOOSING_PHOTOS.md`](CHOOSING_PHOTOS.md)) before selecting, not
+  after.
+
+- **Profile before optimising, the bottleneck may be a library default**
+  – more than half of a print build was reportlab encoding every image as
+  ASCII85 text in pure Python. One setting (`rl_config.useA85 = 0`) took a
+  build from 120 to 45 s and made the PDF a fifth smaller, with identical
+  pixels.
+- **The same photo slips in under another name** – the original book had
+  one selfie as camera file, messenger copy and edited export; it reached a
+  late review round before anyone noticed. The engine now compares every
+  pair of photos in the book. See "Duplicates" in [`ENGINE.md`](ENGINE.md).
+- **Feed the engine wrong input on purpose** – a photo with two roles,
+  a missing or broken file, a `Ł` in a title: each used to fail silently or
+  with a traceback. Each now has a test and a message that names the fix.
+- **Improve layout rules behind a version switch** – a proofread book must
+  render the same forever; `layout: 2` carries the better rules for new
+  books.
+
 ## Only when working through a remote device bridge
 
 These came from a session where Claude worked in a cloud workspace and

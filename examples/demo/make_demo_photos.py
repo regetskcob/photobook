@@ -9,6 +9,7 @@ panorama shapes, so every layout mechanism has something to work on.
 """
 import json
 import os
+import random
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -48,6 +49,14 @@ def make_card(path, idx, order, shape):
     # diagonal stripes make crops and alignment easy to see
     for x in range(-h, w, 80):
         d.line([(x, h), (x + h, 0)], fill=tuple(min(255, c + 25) for c in base), width=18)
+    # a few shapes placed per idx, so no two cards look alike - the engine
+    # refuses look-alike photos in one book
+    rng = random.Random(idx)
+    for _ in range(6):
+        x0, y0 = rng.randrange(w), rng.randrange(h)
+        r = rng.randrange(min(w, h) // 10, min(w, h) // 4)
+        shade = tuple(max(0, c - 60) for c in base) if rng.random() < 0.5 else (235, 235, 225)
+        d.ellipse([x0 - r, y0 - r, x0 + r, y0 + r], fill=shade)
     try:
         font = ImageFont.load_default(size=64)
     except TypeError:  # Pillow < 10.1 has no scalable default font

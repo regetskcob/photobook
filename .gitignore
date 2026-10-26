@@ -11,6 +11,7 @@ __pycache__/
 # build output (`photobook build` writes to build/ next to book.json)
 build/
 dist/
+.photobook-signatures.json
 
 *.zip
 *.pdf

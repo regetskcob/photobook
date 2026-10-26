@@ -20,13 +20,15 @@ placeholder photos). How each mechanism behaves on the page:
 | `photo_map` | no | JSON `{"idx": "path"}` for photo files; alternatively a `file` field per manifest entry |
 | `output_prefix` | no | output file name prefix, default `book` |
 | `day_label` | no | day label template, default `"Day {n}"` (e.g. `"Tag {n}"`) |
+| `layout` | no | `1` (default): the rules the original book was printed with, so an existing book.json renders unchanged. `2` (written by `make_manifest.py`): two landscape photos on one page are staggered instead of squeezed into tall columns, and an odd page count is fixed by splitting the fullest grid page instead of the first |
 | `fill_odd_days_with_blank` | no | `true`: a day whose pages don't add up to whole spreads gets a blank page instead of an error – handy for drafts, `photobook pages` shows where. Default `false` |
 | `style` | no | see below |
 | `cover` | yes | `photo` (idx), `title`, `subtitle` |
-| `front` | no | opening spread: `title`, `tagline`, `intro` (list of paragraphs), `image` (right page, e.g. a map; blank if absent) |
+| `front` | no | opening spread: `title`, `tagline`, `intro` (list of paragraphs), and for the right page either `image` (a file, e.g. a map) or `photo` (an idx – taken out of its day's pages); blank if neither |
 | `days` | yes | the chapters, in book order – see below. `chapters` works as an alias |
 | `closing` | yes | closing spread: `photo` (idx, left page), `caption`, and `lead`, `headline`, `date` (text on the right page) |
 | `page_swaps` | no | list of `{"a": [idx...], "b": [idx...]}` – swap two adjacent page blocks |
+| `allow_duplicates` | no | list of idx groups, e.g. `[[804, 853]]` – photos that may be in the book together although they look alike. Without it, `build` and `check` refuse look-alike photos |
 | `photos` | no | per-photo options, keyed by idx as a string – see below |
 
 ## `days[]`
@@ -39,7 +41,9 @@ placeholder photos). How each mechanism behaves on the page:
 | `intro` | paragraph(s) on the opener page (string or list) |
 | `number` / `label` | default: position in the list / `day_label` with that number |
 | `opener` | idx of the full-bleed opener photo; without it the day has no opener spread |
-| `inset` | idx of the small photo on the opener page; default: the day's first other photo |
+| `inset` | idx of the small photo on the opener page; default: the day's first other photo; `false`: no inset |
+| `opener_caption` | caption on the opener photo – a string, or `["bold line", "lighter line"]` |
+| `color` | `[r, g, b]` (0–1) background of this chapter's opener page; default `style.dark_color` |
 | `hero` | `{"photo": idx, "caption": "..."}` – a captioned full-page highlight; `caption` may be `["bold line", "lighter line"]` |
 | `hero_before_previous_page` | `true` swaps the hero with the page before it |
 | `panorama_after_opener` | idx shown as a two-page spread right after the opener |
@@ -71,6 +75,9 @@ the cover and closing photos) – `photobook pages` lists them.
 | `text_color` | `[0.18, 0.18, 0.18]` – paragraphs on white pages |
 | `caption_size` | `10.5` |
 | `text_slot_size` | `13` |
+| `opener_align` | `"left"` – title, tagline and intro on the left margin; `"center"`: centred in the space left of the inset |
+| `opener_number` | `true` – the big ghosted chapter number at the bottom |
+| `opener_photo_side` | `"right"` – chapter photo on the right page, text left; `"left"`: the other way round |
 | `chapter_icon` | `true` – small mountain mark on title and opener pages |
 | `chapter_silhouette` | `false` – generated ridgeline on opener pages |
 

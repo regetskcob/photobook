@@ -6,6 +6,8 @@ All take their paths as arguments; run any of them with `--help`.
 | Script | Purpose |
 |---|---|
 | `build_index.py` | Indexes every photo in zip archives/folders once: stable idx, capture time, GPS, size, sharpness, thumbnails → `recs_sorted.json`. `build_index.py PROJECT_DIR raw/*.zip` |
+| `gps_report.py` | Per-day list of stops (time window, photo count, map links) from the photos' GPS – for naming chapters and checking the order. `gps_report.py PROJECT_DIR/recs_sorted.json --home LAT,LON` |
+| `suggest_selection.py` | A first-draft `selection.txt`: one photo per burst, shaky/b-w/low-res dropped, spread through each day, sized to the page count. `suggest_selection.py PROJECT_DIR --pages 84` |
 | `make_manifest.py` | Selection → `final_manifest.json`, upright photo files in `fullres/`, `fullres_idx_map.json` and a `book.json` skeleton. `make_manifest.py PROJECT_DIR --select selection.txt` |
 | `photo_source.py` | Shared helper: reads photos straight out of zips or folders, HEIC included. |
 | `heic_extract.py` | Manual ISOBMFF box parser for HEIC files that fail on the standard `libheif` path (grid-type primary images). Needs ffmpeg. `heic_extract.py IN.heic OUT.jpg` |

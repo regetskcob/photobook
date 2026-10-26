@@ -15,7 +15,9 @@ python -m unittest discover tests
 - **No book data in the engine.** Anything specific to one book belongs in
   its `book.json`; anything specific to a print product belongs in a
   profile. New layout options get a `book.json` key with a default that
-  keeps existing books rendering exactly as before.
+  keeps existing books rendering exactly as before; changed layout
+  *rules* go behind a new `layout` value (see "Layout rules" in
+  `docs/ENGINE.md`).
 - **Fail loudly.** A setting that silently stops applying (a stale idx, a
   page count that doesn't add up) cost whole review rounds on the original
   book. Validate new keys in `photobook/book.py` and name the day and what

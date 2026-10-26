@@ -20,7 +20,8 @@ it lived as Python constants inside two ~1,700-line copies of one script
 photobook/book.py     load + validate book.json, manifest and profile
 photobook/layout.py   plan: book -> flat list of logical pages (no image I/O)
 photobook/render.py   draw: logical pages -> PDF, set TrimBox/BleedBox
-photobook/cli.py      `python -m photobook build|pages|renumber|pattern-search|profile-from-pdf`
+photobook/similarity.py  find the same photo twice (copies, edits, bursts)
+photobook/cli.py      `python -m photobook build|check|pages|renumber|pattern-search|profile-from-pdf`
 ```
 
 ## Build modes
@@ -30,9 +31,9 @@ and the default resolution:
 
 | Mode | Page numbers | Default DPI | Output |
 |---|---|---|---|
-| `print` | none | 300 | `<prefix>_cover_print.pdf`, `<prefix>_pages_print.pdf` – the upload files |
-| `review` | small, discreet (5 pt) | 150 | same, `_review` – the finished look, for proofreading |
-| `numbers` | big, high-contrast | 110 | `<prefix>_pages_numbers.pdf` – for feedback rounds by number |
+| `print` | none | 300 (JPEG q90) | `<prefix>_cover_print.pdf`, `<prefix>_pages_print.pdf` – the upload files |
+| `review` | small, discreet (5 pt) | 150 (q80) | same, `_review` – the finished look, for proofreading |
+| `numbers` | big, high-contrast | 110 (q70) | `<prefix>_pages_numbers.pdf` – for feedback rounds by number; ~0.4 MB per spread |
 
 `--spreads 0,3-5` and `--kind opener` render a subset in seconds (used to
 need a hand-copied script "head" exec'd up to a cut marker). `--dpi`
@@ -42,14 +43,26 @@ send without chunking.
 Every mode sets `/TrimBox` and `/BleedBox` from the profile, so a review
 PDF already shows exactly what the printer will cut.
 
+Speed and size, measured on a real book (42 spreads, 158 photos, 24 MP
+camera files): a 300 dpi print build takes ~45 s and ~1.3 GB of memory and
+writes ~160 MB. Images are embedded as binary JPEG streams - reportlab's
+default ASCII85 text encoding, done in pure Python, had taken 66 of 120 s
+and added a quarter to the file size. `/TrimBox` and `/BleedBox` are set
+while drawing, not in a second pass over the finished file.
+
+`python -m photobook check BOOK` runs every check that needs no rendering
+- config, page count, duplicates - in seconds; `build` runs the same
+checks first, so a problem is reported before minutes of rendering.
+
 ## Format profile
 
 The boxes (`media`, `trim`, `bleed` for cover and interior spread) **must
 come from the publisher's own documented "raw format including bleed"
 export, not from a downloaded proof-sheet template** – see "The
 print-ready export fix" below for why the first measurement was wrong.
-For a new product, have the user export their InDesign document from the
-publisher's placed template with those settings, then:
+For a new product, have the user place the publisher's template in their
+layout program (InDesign, Affinity Publisher, …) and export it with those
+settings, then:
 
 ```bash
 python -m photobook profile-from-pdf cover_export.pdf pages_export.pdf --name "..." > profiles/<name>.json
@@ -106,6 +119,17 @@ quietly stopped matching). The engine instead:
   invariants break, naming the day and what to change,
 - lists photos that ended up on no page (`photobook pages`).
 
+More of the same kind, each found by feeding the engine wrong input:
+
+- a photo given two roles in one day (opener *and* hero, a solo page
+  *and* a group member) - the second role used to vanish without a word,
+- a photo file that doesn't exist or can't be decoded - now named before
+  rendering instead of a traceback minutes into a build,
+- text the fonts can't draw - the built-in PDF fonts cover Western European
+  text (cp1252: „quotes“, dashes and … are fine); `Ł`, `ř` or an emoji
+  would print as a gap. Set `style.font_files` to a TTF that has the
+  characters; its glyphs are checked too.
+
 `MANUAL_GRID_ORDER` itself is gone: a fixed placement is a `groups` entry
 with style `manual3`, keyed by the photos themselves and placed at the
 chronological position of its first member, so it survives reflows.
@@ -139,6 +163,45 @@ second and lists those hitting the page count, fewest unrequested
 single-photo pages first. Pick the one closest to the last reviewed
 pattern to minimise visual churn.
 
+### Layout rules (`layout`)
+
+`layout: 1` is the default and reproduces the original book exactly.
+`layout: 2` - written by `make_manifest.py`, used by the demo - changes two
+rules that the review of a real draft showed to be weak:
+
+- **Two landscape photos on one page** were set side by side, each in a
+  tall column that kept barely half of a 4:3 photo's width. With layout 2
+  they are staggered - first photo top left, second bottom right, each
+  60 % of the page wide - so their boxes stay close to their own shape.
+- **An odd page count** was fixed by splitting the day's first grid page,
+  so a 2-photo page became two full-page singles nobody asked for. Layout
+  2 splits the fullest page (4 photos → 2 + 2). On the real draft this
+  took the unrequested single pages of the best pattern from 7 to 3.
+
+New layout rules go behind a new `layout` value, so a book that has been
+proofread never changes under it.
+
+### Duplicates
+
+The same moment twice by accident - a camera original next to its edited
+export, a messenger copy, two copies of one file, near-identical burst
+shots - is refused unless `allow_duplicates` lists the photos together:
+
+- without looking at pixels (every load): the same idx twice in the
+  manifest, two idx with the same file, two idx with the same archive
+  entry;
+- by image (`check` and before every `build`): the edge structure of a
+  centred square crop is compared for every pair of photos in the book.
+  Edges survive colour, brightness, resolution and compression changes but
+  differ between two shots of the same view. On 1,105 photos of a real trip
+  every pair at or above 0.85 was a true copy, edit or burst shot (the
+  original book's triple selfie among them); distinct photos stayed at or
+  below ~0.3. The threshold is 0.9. A copy that was **cropped**
+  differently is not caught reliably - look out for messenger copies.
+
+Signatures are cached in `.photobook-signatures.json` next to book.json,
+so repeated builds pay for them once (~7 s for 158 photos).
+
 ### Opener, inset, hero
 
 - `opener`: the day's big photo, full-bleed on the right-hand page of the
@@ -148,6 +211,16 @@ pattern to minimise visual churn.
   Auto-picked as the day's first photo (excluding opener and panorama)
   unless `inset` names one. The inset is removed from the grid pool so it
   doesn't appear twice.
+- Customising openers: the look of the original book is the default -
+  text left-aligned on the margin, big ghosted chapter number, photo on
+  the right page, inset bottom right. It was worked out over several
+  review rounds (centred text first, then left-aligned to match a
+  reference book; the inset added; a generated ridgeline tried and
+  switched off). Each of those choices is a setting now:
+  `style.opener_align` (`left`/`center`), `style.opener_number`,
+  `style.opener_photo_side` (`right`/`left`), `style.chapter_icon`,
+  `style.chapter_silhouette`, and per chapter `inset: false`,
+  `opener_caption` and `color`. See `schema/book_schema.md`.
 - `hero`: a captioned full-page highlight at its chronological position.
   `hero_before_previous_page` swaps it with the page right before it (same
   spread, other side).
@@ -274,8 +347,9 @@ template with the documented settings, then read the boxes
    white edges. The interior was re-exported with 3 mm all around.
 
 **Verifying a geometry change cheaply.** Render the cover plus one day
-with a mix of page types (`--kind opener`, `--spreads`), rasterise
-(`pdftoppm -r 150`) and look at it, and re-read the boxes with pypdf –
+with a mix of page types (`--kind opener`, `--spreads`, `--keep-spreads`
+for one PDF per spread), rasterise (`pdftoppm -r 150`, or on macOS
+`sips -s format png spread_012.pdf --out spread_012.png`) and look at it, and re-read the boxes with pypdf –
 don't trust that the numbers you typed are the numbers in the file. Only
 then the full build.
 
