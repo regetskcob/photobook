@@ -11,6 +11,55 @@ The engine contains no book data and no product geometry: a book is a
 `book.json` next to its photos, a print product is a profile JSON in
 `profiles/`.
 
+Two ways to use it: **with Claude** (install the skill, describe what you
+want, review PDFs) or **by hand** (run the commands yourself). Both use
+the same engine and files, so you can switch at any point.
+
+## Starting a book with Claude
+
+1. **Install the skill** – see [As a Claude skill](#as-a-claude-skill)
+   below. You need Python 3.9+ with `reportlab pillow numpy pypdf`.
+2. **Describe the goal in one message.** The more of these points you
+   cover, the fewer rounds it takes – they are exactly what the original
+   book had to settle after the fact:
+
+   | Point | Why it matters |
+   |---|---|
+   | **Photos** – where (folder, zip exports), roughly how many, which devices, any edited versions | indexing reads them in place; edited exports are preferred over originals |
+   | **Occasion and reader** – trip, wedding, year in review; for yourselves or a gift; tone | decides texts, cover, how personal captions get |
+   | **Print product** – service, format, orientation, **fixed page count** | the layout is planned to the exact page count; other products need a profile from the service's template |
+   | **Structure** – chapters by day, place or theme; what happens to short days (arrival, departure) | one chapter per capture day is the default |
+   | **Selection** – you choose, or Claude drafts; must-haves and no-gos (people, screenshots, black and white) | a draft is mechanical: sharp, no bursts, spread over each day – not what a photo shows |
+   | **Texts** – language, who writes them, how much (titles only, intros, captions) | placeholders and dates come in that language |
+   | **Feedback** – who reviews, how (annotated PDF, screenshots, a text file per round) | every round starts from a PDF with big photo numbers |
+   | **Deadline and delivery** – order date, where the PDFs should go | print files only on your explicit go-ahead |
+
+   A brief that worked (write yours in any language):
+
+   > I'd like a photobook of our week in the Alps, as a keepsake for the
+   > two of us, personal in tone. The photos are 12 zip exports in
+   > `~/Pictures/Alps 2026/`, from an iPhone and a Fujifilm camera, some
+   > edited in Photomator. Printing at Saal Digital,
+   > Professional Line 30×21 cm landscape, 84 interior pages. One chapter
+   > per day; the departure morning only as the closing photo. Please
+   > suggest a first draft of about 160 photos – selfies are fine,
+   > screenshots not. We'll write the texts ourselves in German: chapter
+   > intros and a few captions. We both give feedback on the numbered PDF.
+   > We want to order by the end of June.
+
+   Missing points aren't a problem – Claude asks for them before it
+   starts, and suggests a default for each.
+3. **What happens then:** Claude indexes the photos, shows contact sheets
+   (and a suggested selection, if you asked for one), builds the manifest
+   and a `book.json` skeleton for your page count, and sends a **numbers
+   PDF** – every photo with a big printed number.
+4. **Rounds:** you answer with notes by number ("037 crop from the top",
+   "remove 041", "these three on one page") and your texts; Claude applies
+   them, checks the result and sends the next PDF. See
+   [Working in rounds](#working-in-rounds--tips-from-a-real-book).
+5. **Print files** when you say go – cover and interior with trim/bleed
+   set, ready to upload.
+
 ## Quickstart
 
 ```bash
@@ -50,32 +99,32 @@ scripts and the demo book. It triggers when you ask Claude to make a
 photobook from your photos, fix photos by their number, hit a page count
 or produce print PDFs.
 
-## A new book
+## A new book by hand
 
 **Step by step: [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md).** In short:
 
-1. **Index the raw material**: `scripts/build_index.py` reads zip
-   archives and folders (HEIC included) into `recs_sorted.json`.
-2. **Select**: `scripts/make_manifest.py` turns a list of chosen photos into
-   `final_manifest.json`, upright photo files and a `book.json` skeleton –
-   schema in [`schema/manifest_schema.md`](schema/manifest_schema.md).
+1. **Index your photos**: `scripts/build_index.py` reads zip exports and
+   folders (HEIC included) into `recs_sorted.json` with thumbnails;
+   `scripts/build_contact_sheets.py` lays them out per day.
+2. **Choose**: write the idx values you want into `selection.txt` – or let
+   `scripts/suggest_selection.py --pages 84` draft one to correct.
 3. **Pick or create a product profile** – `profiles/` has the Saal Digital
-   30×21 cm one; for another product, export the publisher's template as
+   30×21 cm one; for another product, export the service's template as
    "raw format incl. bleed, no marks" and run `profile-from-pdf`. Read
    "The print-ready export fix" in [`docs/ENGINE.md`](docs/ENGINE.md)
    first.
-4. **Fill in `book.json`** – titles, texts, highlights; format in
-   [`schema/book_schema.md`](schema/book_schema.md), every option in use in
-   `examples/demo/book.json`.
-5. **Curate texts with the user** – convention in
-   [`docs/TEXTE_VORLAGE_PROTOCOL.md`](docs/TEXTE_VORLAGE_PROTOCOL.md).
-   **Read this first**: photo numbers shift whenever the selection
-   changes, and user notes refer to numbers.
-6. **Iterate**: `--mode numbers` for feedback rounds (resend after every
-   photo/order change), `--mode review` for proofreading,
-   `pattern-search` when the page count no longer adds up.
-7. **Print files**: `--mode print`, only after the user's explicit
-   go-ahead.
+4. **Build the skeleton**: `scripts/make_manifest.py . --select
+   selection.txt --pages 84 --lang de` writes the manifest, upright photo
+   files and a `book.json` that already fits the page count.
+5. **Fill in `book.json`** – titles, texts, highlights, chapter openers;
+   format in [`schema/book_schema.md`](schema/book_schema.md), every
+   option in use in `examples/demo/book.json`.
+6. **Iterate**: `check`, then `--mode numbers` for feedback rounds (resend
+   after every photo change – the numbers shift, see
+   [`docs/TEXTE_VORLAGE_PROTOCOL.md`](docs/TEXTE_VORLAGE_PROTOCOL.md)),
+   `--mode review` for proofreading, `renumber` and `pattern-search` after
+   adding or removing photos.
+7. **Print files**: `--mode print` once everyone involved has said go.
 
 ## Structure
 

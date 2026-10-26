@@ -24,6 +24,10 @@ DEFAULT_STYLE = {
     "font_files": {},
     "dark_color": [0.11, 0.13, 0.16],  # title, opener and closing pages
     "text_color": [0.18, 0.18, 0.18],  # paragraphs on white pages
+    # chapter openers - the defaults are the look of the original book
+    "opener_align": "left",       # or "center": text centred left of the inset
+    "opener_number": True,        # the big ghosted chapter number
+    "opener_photo_side": "right",  # or "left": chapter photo on the left page
     "chapter_icon": True,
     # The chapter-opener ridgeline was tuned over many rounds and then
     # switched off for the Oberstdorf book - kept behind a flag so the work
@@ -180,9 +184,10 @@ class Book:
             for key in ("title", "date", "label"):
                 out.append((f"day {d['id']} {key}", d.get(key) or ""))
             out += [(f"day {d['id']} intro", t) for t in d["intro"]]
-            if d.get("hero"):
-                cap = d["hero"].get("caption") or ""
-                out += [(f"day {d['id']} hero caption", t) for t in (cap if isinstance(cap, list) else [cap])]
+            for key, cap in (("hero caption", (d.get("hero") or {}).get("caption")),
+                             ("opener_caption", d.get("opener_caption"))):
+                cap = cap or ""
+                out += [(f"day {d['id']} {key}", t) for t in (cap if isinstance(cap, list) else [cap])]
         for idx, opts in self.photos.items():
             for key in ("caption", "text", "spread_caption"):
                 value = opts.get(key) or ""
@@ -262,7 +267,8 @@ class Book:
             day_idxs = {m["idx"] for m in self.by_day.get(day_id, [])}
             if not day_idxs:
                 errors.append(f"day {day_id}: no photos in the manifest")
-            refs = [("opener", d.get("opener")), ("inset", d.get("inset")),
+            inset = d.get("inset")
+            refs = [("opener", d.get("opener")), ("inset", inset if inset is not False else None),
                     ("panorama_after_opener", d.get("panorama_after_opener")),
                     ("mid_day_panorama", d.get("mid_day_panorama"))]
             if d.get("hero"):
@@ -288,9 +294,18 @@ class Book:
                     errors.append(f"day {day_id}: {what} idx {idx} is also the closing photo")
                 if idx is not None and idx == self.data.get("front", {}).get("photo"):
                     errors.append(f"day {day_id}: {what} idx {idx} is also the photo next to the title")
-            if d.get("inset") is not None and d.get("opener") is None:
+            if inset not in (None, False) and d.get("opener") is None:
                 errors.append(f"day {day_id}: an inset needs an opener")
+            color = d.get("color")
+            if color is not None and not (isinstance(color, list) and len(color) == 3
+                                          and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in color)):
+                errors.append(f"day {day_id}: color must be [r, g, b] with values 0-1")
+            if d.get("opener_caption") and d.get("opener") is None:
+                errors.append(f"day {day_id}: opener_caption needs an opener")
 
+        for key, allowed in (("opener_align", ("left", "center")), ("opener_photo_side", ("right", "left"))):
+            if self.style[key] not in allowed:
+                errors.append(f"style.{key}: one of {allowed}")
         if self.layout not in (1, 2):
             errors.append(f"layout {self.layout!r}: must be 1 or 2")
         if self.front.get("photo") is not None and self.front.get("image"):

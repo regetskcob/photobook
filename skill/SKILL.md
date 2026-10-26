@@ -12,6 +12,42 @@ manifest with the user, rendering, and checking the result visually.
 
 Paths below are relative to this skill's folder (`<skill>`).
 
+## Before you start: the brief
+
+A new book needs eight answers. Take what the user's message already says,
+and ask for the rest in **one** message – each question with the default
+you'd use, so "yes, defaults" is a complete answer. Don't guess the ones
+marked ⚠: they change everything after them.
+
+1. **Photos** – where (folder or zip exports), roughly how many, which
+   devices, edited versions? (default: index everything found there)
+2. ⚠ **Print product** – service, format, orientation, exact page count.
+   No default: ask neutrally. Mention that Saal Digital Professional Line
+   30×21 landscape is ready to use; for anything else you need the
+   service's template exported as "raw format incl. bleed, no marks"
+   (`references/ENGINE.md`, "Format profile").
+3. **Occasion, reader, tone** – trip/wedding/year; for themselves or a
+   gift; personal or neutral. (default: personal, for themselves)
+4. **Structure** – chapters by day, place or theme; short arrival/departure
+   days folded in or used as closing photo. (default: one per day, short
+   days folded into the day before, last photo closes the book)
+5. ⚠ **Selection** – does the user choose, or do you draft? Must-haves and
+   no-gos (people, screenshots, black and white).
+6. **Texts** – language, who writes them, how much. (default: the user's
+   language, placeholders for titles and intros, written by the user)
+7. **Feedback** – who reviews and how (annotated PDF, screenshots, a text
+   file per round – `references/TEXTE_VORLAGE_PROTOCOL.md`). (default: notes
+   by photo number on the numbers PDF)
+8. **Deadline and project folder** – order date, and where the project
+   lives: index, copies of the chosen photos (~6 MB each), book.json,
+   PDFs. Never inside the photo folder or this skill. (default: a new
+   folder next to the photos, e.g. `<photos> – Fotobuch/`; PDFs in its
+   `build/`; print files only on their go-ahead)
+
+Indexing can start while you wait for answers – it only reads the photos.
+Repeat the brief back in a few lines before the first build, so a
+misunderstanding costs one message, not a round.
+
 ## Setup
 
 ```bash
@@ -160,6 +196,8 @@ building on it, and say which picks you are unsure about.
 | remove a photo | delete it from the manifest, `renumber`, re-run `pages` and fix any errors it names |
 | add a photo | add it to the manifest (idx from `recs_sorted.json`, its file to the photo map), `renumber`, `pages` |
 | other script than Latin (Greek, Cyrillic, …) or a different look | `style.font_files`, `style.dark_color` |
+| chapter pages: "Text mittig", "Foto links", "ohne große Nummer" | `style.opener_align: center`, `style.opener_photo_side: left`, `style.opener_number: false` |
+| one chapter: no small photo / a caption on the chapter photo / its own colour | that day's `inset: false`, `opener_caption`, `color` |
 
 The engine refuses references to photos that aren't in that day, a photo
 with two roles, duplicate numbers, broken spread pairing, missing or

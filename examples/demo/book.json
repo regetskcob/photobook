@@ -39,6 +39,7 @@
         "Grid cells can show a paragraph of text instead of a photo."
       ],
       "opener": 21,
+      "opener_caption": ["A caption on the chapter photo", "with a lighter second line"],
       "inset": 23,
       "mid_day_panorama": 25,
       "hero": {"photo": 28, "caption": ["A two-line caption", "with a lighter second line"]},
@@ -50,6 +51,7 @@
       "date": "Sunday, 3 May",
       "intro": ["Pages that bleed into the trim area, and a photo forced onto its own page."],
       "opener": 40,
+      "color": [0.16, 0.24, 0.21],
       "inset": 47,
       "solo_fullbleed": [44],
       "groups": [{"photos": [42, 43], "style": "bleed2"}, {"photos": [45, 41, 46], "style": "manual3"}]

@@ -53,6 +53,10 @@ def fix_links(text):
     relative links that crossed folders in the repo."""
     text = re.sub(r"\]\((?:\.\./)?(?:docs|schema)/([A-Za-z_]+\.md)", r"](\1", text)
     text = re.sub(r"\]\(\.\./examples/", "](../examples/", text)
+    # the skill has no README; its starting guide is SKILL.md
+    text = text.replace('"Starting a book with Claude" in the [README](../README.md)',
+                        '"Before you start: the brief" in [SKILL.md](../SKILL.md)')
+    text = text.replace("](../README.md)", "](../SKILL.md)")
     return text
 
 

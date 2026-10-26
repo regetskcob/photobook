@@ -118,6 +118,31 @@ class DemoBookTest(unittest.TestCase):
         grid_idxs = {m["idx"] for spec in pages if spec[0].startswith("grid") for m in spec[1]}
         self.assertNotIn(3, grid_idxs)
 
+    def test_opener_options(self):
+        def change(d):
+            d["style"] = {"opener_align": "center", "opener_photo_side": "left", "opener_number": False}
+            d["days"][0].update(inset=False, opener_caption=["Line one", "line two"], color=[0.2, 0.3, 0.25])
+            d["pages"] = 0
+        book = Book(self._variant(change))
+        pages = plan(book, check_page_count=False)  # also runs the spread-pairing check
+        first = [spec for spec in pages if spec[0] in ("opener", "opener_photo")][:2]
+        self.assertEqual([spec[0] for spec in first], ["opener_photo", "opener"])
+        self.assertEqual(first[0][2]["caption"], ["Line one", "line two"])
+        self.assertIsNone(first[1][2]["inset"])
+        def with_page_count(d):
+            change(d)
+            d["pages"] = len(pages)
+        out = os.path.join(self.tmp, "opener_out")
+        subprocess.run([sys.executable, "-m", "photobook", "build", self._variant(with_page_count), "--mode", "review",
+                        "--kind", "opener", "--dpi", "30", "--out", out], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+
+    def test_bad_opener_options_are_named(self):
+        def change(d):
+            d["style"] = {"opener_align": "middle"}
+            d["days"][1]["color"] = [30, 40, 50]
+        with self.assertRaisesRegex(BookError, "opener_align.*\n.*|color must be"):
+            Book(self._variant(change))
+
     def test_build_print_sets_trim_and_bleed_boxes(self):
         out = os.path.join(self.tmp, "out")
         subprocess.run([sys.executable, "-m", "photobook", "build", self.book_path, "--mode", "print",

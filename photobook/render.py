@@ -549,9 +549,11 @@ class Renderer:
         c.rect(bx0, by0, bx1 - bx0, by1 - by0, fill=1, stroke=0)
 
     def draw_chapter_opener(self, c, bleed, trim, day, inset_m=None, label=""):
+        st = self.book.style
         bx0, by0, bx1, by1 = bleed
         w, h = bx1 - bx0, by1 - by0
-        self._dark_background(c, bleed)
+        c.setFillColorRGB(*(day.get("color") or self.dark_color))
+        c.rect(bx0, by0, w, h, fill=1, stroke=0)
         tx0, ty0, tx1, ty1 = trim
 
         inset_w = w * 0.36
@@ -563,12 +565,24 @@ class Renderer:
         number = str(day["number"]).zfill(2)
         title_lines = textwrap.wrap(day["title"].upper(), 20)
 
-        # the ghosted day number (74pt, baseline ty0+26) is a keep-clear zone
+        # Text sits left-aligned on the margin (since round 5 of the original
+        # book) or centred in the space left of the inset (its first look).
         text_x = tx0 + INSET
+        centred = st["opener_align"] == "center"
+        text_cx = (text_x + ((ix0 - 12) if inset_m is not None else (tx1 - INSET))) / 2
+
+        def put(text, y):
+            if centred:
+                c.drawCentredString(text_cx, y, text)
+            else:
+                c.drawString(text_x, y, text)
+
+        # the ghosted day number (74pt, baseline ty0+26) is a keep-clear zone
         num_y0 = ty0 + 26
         num_top = num_y0 + 74 * 0.72
-        num_x0 = text_x
-        num_x1 = text_x + c.stringWidth(number, self.serif_b, 74)
+        num_w = c.stringWidth(number, self.serif_b, 74)
+        num_x0 = text_cx - num_w / 2 if centred else text_x
+        num_x1 = num_x0 + num_w
 
         intro = day["intro"]
         wrap_at = 34 if inset_m is not None else 46
@@ -580,20 +594,20 @@ class Renderer:
                                          keep_clear=(num_x0, num_x1, num_top + 14), edge_x=bx1,
                                          max_peak=max_peak)
 
-        # title, tagline and intro are left-aligned on the same margin as the
-        # ghosted number; the icon's left edge lines up with it too
+        # the icon's left edge lines up with the text margin (or is centred)
         icon_y = ty1 - 90
-        self.draw_chapter_icon(c, text_x + 17, icon_y)
+        self.draw_chapter_icon(c, text_cx if centred else text_x + 17, icon_y)
 
         c.setFillColorRGB(1, 1, 1)
         c.setFont(self.serif_b, 22)
         title_y = icon_y - 44
         for i, ln in enumerate(title_lines):
-            c.drawString(text_x, title_y - i * 27, ln)
+            put(ln, title_y - i * 27)
         rule_y = title_y - (len(title_lines) - 1) * 27 - 28
         c.setStrokeColorRGB(1, 1, 1, alpha=0.5)
         c.setLineWidth(0.75)
-        c.line(text_x, rule_y, text_x + 88, rule_y)
+        rule_x = text_cx - 44 if centred else text_x
+        c.line(rule_x, rule_y, rule_x + 88, rule_y)
 
         tagline = day['label'].upper()
         if day.get('date'):
@@ -601,11 +615,12 @@ class Renderer:
         tagline_y = rule_y - 20
         c.setFont(self.serif_i, 10)
         c.setFillColorRGB(1, 1, 1, alpha=0.8)
-        c.drawString(text_x, tagline_y, tagline)
+        put(tagline, tagline_y)
 
-        c.setFont(self.serif_b, 74)
-        c.setFillColorRGB(1, 1, 1, alpha=0.22)
-        c.drawString(tx0 + INSET, ty0 + 26, number)
+        if st["opener_number"]:
+            c.setFont(self.serif_b, 74)
+            c.setFillColorRGB(1, 1, 1, alpha=0.22)
+            c.drawString(num_x0, num_y0, number)
 
         if inset_m is not None:
             crop = self.load_photo(inset_m, inset_w, inset_h, label=label)
@@ -626,7 +641,7 @@ class Renderer:
             y = tagline_y - 34
             for para in intro:
                 for ln in textwrap.wrap(para, wrap_at):
-                    c.drawString(text_x, y, ln)
+                    put(ln, y)
                     y -= 13
                 y -= 7
 
@@ -675,7 +690,8 @@ class Renderer:
             _, m, extra = spec
             self.draw_chapter_opener(c, bleed, trim, extra['day'], inset_m=extra.get('inset'), label=label)
         elif kind == 'opener_photo':
-            self.draw_full_bleed(c, bleed, trim, spec[1], label=label)
+            caption = spec[2].get('caption') if len(spec) > 2 else None
+            self.draw_full_bleed(c, bleed, trim, spec[1], caption=caption, label=label)
         elif kind in ('hero_float', 'closing_photo'):
             _, m, extra = spec
             self.draw_full_bleed(c, bleed, trim, m, caption=extra.get('caption'), label=label)

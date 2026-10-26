@@ -211,6 +211,16 @@ so repeated builds pay for them once (~7 s for 158 photos).
   Auto-picked as the day's first photo (excluding opener and panorama)
   unless `inset` names one. The inset is removed from the grid pool so it
   doesn't appear twice.
+- Customising openers: the look of the original book is the default -
+  text left-aligned on the margin, big ghosted chapter number, photo on
+  the right page, inset bottom right. It was worked out over several
+  review rounds (centred text first, then left-aligned to match a
+  reference book; the inset added; a generated ridgeline tried and
+  switched off). Each of those choices is a setting now:
+  `style.opener_align` (`left`/`center`), `style.opener_number`,
+  `style.opener_photo_side` (`right`/`left`), `style.chapter_icon`,
+  `style.chapter_silhouette`, and per chapter `inset: false`,
+  `opener_caption` and `color`. See `schema/book_schema.md`.
 - `hero`: a captioned full-page highlight at its chronological position.
   `hero_before_previous_page` swaps it with the page right before it (same
   spread, other side).

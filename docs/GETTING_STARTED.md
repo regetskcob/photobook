@@ -1,5 +1,9 @@
 # Getting started: from camera exports to print files
 
+This is the way **by hand**. With the Claude skill installed, describe the
+book in one message instead and Claude runs these steps with you – see
+"Starting a book with Claude" in the [README](../README.md).
+
 A walk-through for a first book. Each step names the command and what to
 check before moving on. Background on every mechanism:
 [`ENGINE.md`](ENGINE.md); the full format of `book.json`:

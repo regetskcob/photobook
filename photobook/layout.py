@@ -133,7 +133,7 @@ def _day_pages(book, day, pattern):
     # chronological photo of the day, excluding opener and panorama) so it
     # can be excluded from the grid pool - otherwise it shows up twice.
     inset_m = None
-    if op_idx is not None:
+    if op_idx is not None and day.get("inset") is not False:  # false: no inset on this opener
         if day.get("inset") is not None:
             inset_m = by_idx_item[day["inset"]]
         else:
@@ -180,8 +180,13 @@ def _day_pages(book, day, pattern):
     pages = []
     if op_idx is not None:
         m0 = by_idx_item[op_idx]
-        pages.append(('opener', m0, {'day': day, 'inset': inset_m}))
-        pages.append(('opener_photo', m0))
+        text_page = ('opener', m0, {'day': day, 'inset': inset_m})
+        photo_page = ('opener_photo', m0, {'caption': day['opener_caption']}) if day.get('opener_caption') \
+            else ('opener_photo', m0)
+        if book.style["opener_photo_side"] == "left":
+            pages += [photo_page, text_page]
+        else:
+            pages += [text_page, photo_page]
     if pano_idx is not None:
         pm = by_idx_item[pano_idx]
         pages.append(('spread_image', pm))
@@ -241,12 +246,17 @@ def check(pages_spec, page_count=None):
         raise LayoutError(f"expected {page_count} pages, got {len(pages_spec)} - adjust 'pattern' (see `photobook pattern-search`)")
     if len(pages_spec) % 2:
         raise LayoutError(f"odd number of pages ({len(pages_spec)}) - pages come in spreads")
-    # every opener / panorama must start on a left page (even index)
+    # every opener spread / panorama must start on a left page (even index)
     prev_kind = None
     for i, spec in enumerate(pages_spec):
         kind = spec[0]
-        if kind in ('opener', 'spread_image') and kind != prev_kind and i % 2 != 0:
+        if kind == 'spread_image' and kind != prev_kind and i % 2 != 0:
             raise LayoutError(f"page-pairing bug: {kind} at page {i} does not start on a left page")
+        if kind == 'opener':
+            # the chapter photo sits right after the text page, or right before it
+            start = i - 1 if prev_kind == 'opener_photo' else i
+            if start % 2 != 0:
+                raise LayoutError(f"page-pairing bug: the opener spread at page {start} does not start on a left page")
         prev_kind = kind
     # A photo used as opener/hero/inset/closing must never show up again in a
     # grid. 'opener' carries its photo only as metadata (it is drawn once,
