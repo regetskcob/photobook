@@ -1,20 +1,20 @@
 """Command line: python -m photobook <command> ...
 
   build           render the book (print / review / numbers mode)
+  check           config, page count and duplicate photos, without rendering
   pages           print the page plan with printed photo numbers, no rendering
   renumber        renumber the printed photo numbers after adding/removing photos
   pattern-search  find PATTERNs that hit the book's exact page count
   profile-from-pdf  read page geometry from a publisher template export
 """
 import argparse
-import itertools
 import json
 import os
 import shutil
 import sys
 
 from .book import Book, BookError
-from .layout import LayoutError, describe, plan, unplaced_photos
+from .layout import LayoutError, describe, placed_idxs, plan, search_patterns, unplaced_photos
 
 # print: upload files for the publisher - no numbers, full resolution
 # review: proof of the finished look, with the small discreet numbers
@@ -46,11 +46,23 @@ def _load(path):
     return book
 
 
+def check_duplicates(book, pages_spec):
+    """Photos in the book that look like another photo in the book."""
+    from .similarity import describe_duplicates, find_duplicates
+    pairs = find_duplicates(book, placed_idxs(pages_spec))
+    if pairs:
+        raise BookError("the same photo is in the book more than once:\n  "
+                        + "\n  ".join(describe_duplicates(book, pairs))
+                        + "\nRemove one of each pair - or, if both are meant to be in the book, list them "
+                          "together in book.json: \"allow_duplicates\": [[idx, idx], ...]")
+
+
 def cmd_build(args):
-    from .render import Renderer, set_print_boxes
+    from .render import Renderer
 
     book = _load(args.book)
     pages_spec = plan(book)
+    check_duplicates(book, pages_spec)
     mode = MODES[args.mode]
     r = Renderer(book, tag_numbers=mode['tag_numbers'], target_dpi=args.dpi or mode['dpi'],
                  jpeg_quality=mode['jpeg'])
@@ -68,19 +80,14 @@ def cmd_build(args):
     os.makedirs(out_dir, exist_ok=True)
     prefix = os.path.join(out_dir, book.output_prefix)
     suffix = args.mode + ('_partial' if partial else '')
-    p = book.profile
 
-    raw_pages = os.path.join(work_dir, 'pages.pdf')
-    n = r.render_pages(pages_spec, raw_pages, work_dir, spreads=spreads)
     pages_out = f"{prefix}_pages_{suffix}.pdf"
-    set_print_boxes(raw_pages, p.pages_trim, p.pages_bleed, pages_out)
+    n = r.render_pages(pages_spec, pages_out, work_dir, spreads=spreads)
     print(f"wrote {pages_out} ({n} spreads)")
 
     if mode['cover'] and not partial:
-        raw_cover = os.path.join(work_dir, 'cover.pdf')
-        r.render_cover(raw_cover)
         cover_out = f"{prefix}_cover_{suffix}.pdf"
-        set_print_boxes(raw_cover, p.cover_trim, p.cover_bleed, cover_out)
+        r.render_cover(cover_out)
         print(f"wrote {cover_out}")
 
     if args.keep_spreads:
@@ -104,6 +111,27 @@ def cmd_pages(args):
         print(f"not placed: idx {m['idx']} (number {m['order']:03d}, day {m['day']})")
     if len(pages_spec) != book.page_count:
         return 1
+
+
+def cmd_check(args):
+    """Everything that can be checked without rendering: config, page plan,
+    duplicates, unplaced photos."""
+    book = _load(args.book)
+    pages_spec = plan(book, check_page_count=False)
+    problems = []
+    if len(pages_spec) != book.page_count:
+        problems.append(f"{len(pages_spec)} pages planned, the book needs {book.page_count}")
+    try:
+        check_duplicates(book, pages_spec)
+    except BookError as e:
+        problems.append(str(e))
+    unplaced = unplaced_photos(book, pages_spec)
+    if unplaced:
+        print(f"note: {len(unplaced)} photo(s) of the manifest are on no page (see `pages`)")
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    print(f"ok: {len(pages_spec)} pages, {len(placed_idxs(pages_spec))} photos, no duplicates")
 
 
 def cmd_renumber(args):
@@ -144,20 +172,7 @@ def cmd_pattern_search(args):
     values = [int(v) for v in args.values.split(',')]
     if any(v not in (1, 2, 3, 4) for v in values):
         raise BookError("--values: grid pages hold 1 to 4 photos")
-    hits = []
-    for length in (int(n) for n in args.lengths.split(',')):
-        for combo in itertools.product(values, repeat=length):
-            try:
-                pages_spec = plan(book, pattern=list(combo))
-            except LayoutError:
-                continue
-            # Single-photo pages nobody asked for ("orphans"): a batch cut short
-            # at a hero, group or day end, or a 2-photo page fix_parity split
-            # in two. Fewer is better; solo_fullbleed pages don't count.
-            orphans = sum(1 for s in pages_spec if s[0] == 'grid1' and len(s) == 2) - \
-                sum(len(d['solo_fullbleed']) for d in book.days)
-            hits.append((orphans, -sum(combo) / len(combo), list(combo)))
-    hits.sort()
+    hits = search_patterns(book, [int(n) for n in args.lengths.split(',')], values)
     print(f"{len(hits)} PATTERNs hit exactly {book.page_count} pages (fewest orphan single-photo pages first):")
     if not hits:
         planned = len(plan(book, check_page_count=False))
@@ -165,8 +180,8 @@ def cmd_pattern_search(args):
         hint = ("remove photos" if planned > book.page_count
                 else "add photos, or allow single-photo pages with `--values 1,2,3,4`")
         print(f"  none - the plan currently has {planned} pages: {hint}.")
-    for orphans, neg_avg, combo in hits[:args.limit]:
-        print(f"  {combo}  orphans={orphans}  avg photos/page={-neg_avg:.2f}")
+    for orphans, avg, combo in hits[:args.limit]:
+        print(f"  {combo}  orphans={orphans}  avg photos/page={avg:.2f}")
     print(f"current: {book.pattern}")
 
 
@@ -212,6 +227,10 @@ def main(argv=None):
     p = sub.add_parser('pages', help='print the page plan')
     p.add_argument('book')
     p.set_defaults(func=cmd_pages)
+
+    c = sub.add_parser('check', help='config, page count and duplicate photos, without rendering')
+    c.add_argument('book')
+    c.set_defaults(func=cmd_check)
 
     r = sub.add_parser('renumber', help='renumber the printed photo numbers through the whole book')
     r.add_argument('book')

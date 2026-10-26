@@ -130,6 +130,66 @@ class PipelineTest(unittest.TestCase):
             with open(path, "w") as f:
                 json.dump(backup, f)
 
+    def _variant_with_copies(self, allow=None):
+        """The book plus two copies of photo idx 3: a byte-identical one under
+        another file, and an 'edited' one (warmer, brighter, re-encoded)."""
+        manifest = self.load("final_manifest.json")
+        photo_map = self.load("fullres_idx_map.json")
+        src = os.path.join(self.project, photo_map["3"])
+        variant = os.path.join(self.tmp, "copies")
+        if os.path.exists(variant):
+            shutil.rmtree(variant)
+        shutil.copytree(self.project, variant, ignore=shutil.ignore_patterns("raw", "thumbs"))
+        with Image.open(src) as im:
+            # a pattern, so the photo has structure to recognise
+            im = im.convert("RGB")
+            for x in range(0, im.width, 97):
+                for y in range(0, im.height, 61):
+                    im.paste((x % 255, y % 255, 90), (x, y, x + 40, y + 25))
+            im.save(os.path.join(variant, photo_map["3"]), quality=92)
+            im.save(os.path.join(variant, "fullres", "copy.jpg"), quality=92)
+            edited = Image.eval(im, lambda v: min(255, int(v * 1.15) + 10))
+            edited.save(os.path.join(variant, "fullres", "edited.jpg"), quality=70)
+        day = next(m["day"] for m in manifest if m["idx"] == 3)
+        manifest += [{"idx": 900, "day": day, "order": 900}, {"idx": 901, "day": day, "order": 901}]
+        photo_map.update({"900": "fullres/copy.jpg", "901": "fullres/edited.jpg"})
+        with open(os.path.join(variant, "final_manifest.json"), "w") as f:
+            json.dump(manifest, f)
+        with open(os.path.join(variant, "fullres_idx_map.json"), "w") as f:
+            json.dump(photo_map, f)
+        book = self.load("book.json")
+        book["pages"] = 0
+        if allow:
+            book["allow_duplicates"] = allow
+        path = os.path.join(variant, "book.json")
+        with open(path, "w") as f:
+            json.dump(book, f)
+        return path
+
+    def test_copies_and_edits_of_a_photo_are_refused(self):
+        from photobook.layout import placed_idxs
+        from photobook.similarity import find_duplicates
+        book = Book(self._variant_with_copies())
+        pairs = {(a, b) for a, b, _ in find_duplicates(book, placed_idxs(plan(book, check_page_count=False)))}
+        self.assertEqual(pairs, {(3, 900), (3, 901), (900, 901)})
+
+    def test_allow_duplicates_lets_listed_photos_through(self):
+        from photobook.layout import placed_idxs
+        from photobook.similarity import find_duplicates
+        book = Book(self._variant_with_copies(allow=[[3, 900, 901]]))
+        self.assertEqual(find_duplicates(book, placed_idxs(plan(book, check_page_count=False))), [])
+
+    def test_same_file_under_two_idx_is_refused_without_looking(self):
+        path = self._variant_with_copies()
+        photo_map_path = os.path.join(os.path.dirname(path), "fullres_idx_map.json")
+        with open(photo_map_path) as f:
+            photo_map = json.load(f)
+        photo_map["900"] = photo_map["3"]
+        with open(photo_map_path, "w") as f:
+            json.dump(photo_map, f)
+        with self.assertRaisesRegex(BookError, "use the same file"):
+            Book(path)
+
     def test_closing_photo_cannot_also_open_a_chapter(self):
         data = self.load("book.json")
         data["closing"]["photo"] = data["days"][0]["opener"]

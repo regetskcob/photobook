@@ -5,6 +5,7 @@
   "manifest": "final_manifest.json",
   "output_prefix": "Demo",
   "day_label": "Day {n}",
+  "layout": 2,
   "cover": {
     "photo": 2,
     "title": "DEMO TRIP",

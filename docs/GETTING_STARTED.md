@@ -108,8 +108,13 @@ uses every option.
 ## 5. Feedback rounds
 
 ```bash
+python -m photobook check book.json                  # config, page count, duplicate photos
 python -m photobook build book.json --mode numbers   # big photo numbers, small file
 ```
+
+`check` refuses look-alike photos – a camera original next to its edited
+export, a messenger copy, burst shots. Remove one of each pair, or list
+them under `allow_duplicates` if both really belong in the book.
 
 Send that PDF to whoever reviews the book. Notes like "photo 037: crop
 from the top" refer to the printed number; look it up in

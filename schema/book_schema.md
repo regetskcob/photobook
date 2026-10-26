@@ -20,13 +20,15 @@ placeholder photos). How each mechanism behaves on the page:
 | `photo_map` | no | JSON `{"idx": "path"}` for photo files; alternatively a `file` field per manifest entry |
 | `output_prefix` | no | output file name prefix, default `book` |
 | `day_label` | no | day label template, default `"Day {n}"` (e.g. `"Tag {n}"`) |
+| `layout` | no | `1` (default): the rules the original book was printed with, so an existing book.json renders unchanged. `2` (written by `make_manifest.py`): two landscape photos on one page are staggered instead of squeezed into tall columns, and an odd page count is fixed by splitting the fullest grid page instead of the first |
 | `fill_odd_days_with_blank` | no | `true`: a day whose pages don't add up to whole spreads gets a blank page instead of an error – handy for drafts, `photobook pages` shows where. Default `false` |
 | `style` | no | see below |
 | `cover` | yes | `photo` (idx), `title`, `subtitle` |
-| `front` | no | opening spread: `title`, `tagline`, `intro` (list of paragraphs), `image` (right page, e.g. a map; blank if absent) |
+| `front` | no | opening spread: `title`, `tagline`, `intro` (list of paragraphs), and for the right page either `image` (a file, e.g. a map) or `photo` (an idx – taken out of its day's pages); blank if neither |
 | `days` | yes | the chapters, in book order – see below. `chapters` works as an alias |
 | `closing` | yes | closing spread: `photo` (idx, left page), `caption`, and `lead`, `headline`, `date` (text on the right page) |
 | `page_swaps` | no | list of `{"a": [idx...], "b": [idx...]}` – swap two adjacent page blocks |
+| `allow_duplicates` | no | list of idx groups, e.g. `[[804, 853]]` – photos that may be in the book together although they look alike. Without it, `build` and `check` refuse look-alike photos |
 | `photos` | no | per-photo options, keyed by idx as a string – see below |
 
 ## `days[]`

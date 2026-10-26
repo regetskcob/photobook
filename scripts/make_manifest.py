@@ -115,18 +115,22 @@ def skeleton(days, by_idx, profile, lang, output_prefix):
     # undated photos stay out of the chapters until someone sorts them in
     days = {d: idxs for d, idxs in days.items() if d != 'undated'}
     closing = list(days.values())[-1][-1]
-    chapters, openers = [], []
+    chapters, taken = [], {closing}
     for day_id, idxs in days.items():
         ranked = [i for i in best_photos(idxs, by_idx) if i != closing]
         chapter = {"id": day_id, "title": t['day_title'], "date": format_date(day_id, t), "intro": []}
         if ranked:
             chapter["opener"] = ranked[0]
-            openers.append(ranked[0])
+            taken.add(ranked[0])
             if len(ranked) > 1:
                 # the default inset (the day's first photo) is often a throwaway shot
                 chapter["inset"] = ranked[1]
+                taken.add(ranked[1])
         chapters.append(chapter)
-    cover = best_photos([i for idxs in days.values() for i in idxs], by_idx)[0]
+    ranked_all = best_photos([i for idxs in days.values() for i in idxs], by_idx)
+    cover = ranked_all[0]
+    # the page facing the title: a strong photo that isn't used elsewhere
+    front = next((i for i in ranked_all if i not in taken and i != cover), None)
     return {
         "pages": 0,
         "profile": profile,
@@ -135,10 +139,12 @@ def skeleton(days, by_idx, profile, lang, output_prefix):
         "photo_map": "fullres_idx_map.json",
         "output_prefix": output_prefix,
         "day_label": t['day_label'],
+        "layout": 2,
         # first drafts often leave a day one page short - fill it instead of failing
         "fill_odd_days_with_blank": True,
         "cover": {"photo": cover, "title": t['title'], "subtitle": t['subtitle']},
-        "front": {"title": t['title'], "tagline": t['tagline'], "intro": [t['intro']]},
+        "front": dict({"title": t['title'], "tagline": t['tagline'], "intro": [t['intro']]},
+                      **({"photo": front} if front is not None else {})),
         "days": chapters,
         # the last photo of the trip closes the book; it is not part of its day's pages
         "closing": {"photo": closing, "caption": "", "lead": "", "headline": t['headline'], "date": ""},
@@ -225,7 +231,7 @@ def main():
         book = skeleton(days, by_idx, args.profile, args.lang, args.name)
         sys.path.insert(0, ROOT)
         from photobook.book import Book
-        from photobook.layout import LayoutError, plan
+        from photobook.layout import LayoutError, plan, search_patterns
         with open(book_path, 'w') as f:
             json.dump(book, f, indent=2, ensure_ascii=False)
         try:
@@ -233,6 +239,16 @@ def main():
             book["pages"] = args.pages or planned
         except LayoutError as e:
             print(f"note: {e}")
+        if args.pages:
+            with open(book_path, 'w') as f:
+                json.dump(book, f, indent=2, ensure_ascii=False)
+            hits = search_patterns(Book(book_path), lengths=(2, 3, 4, 5, 6))
+            if hits:
+                book["pattern"] = hits[0][2]
+                print(f"pattern {hits[0][2]} hits {args.pages} pages with {hits[0][0]} unrequested single-photo page(s)")
+            else:
+                print(f"no pattern hits {args.pages} pages with these photos - add or remove some, "
+                      "then run `python -m photobook pattern-search book.json`")
         with open(book_path, 'w') as f:
             json.dump(book, f, indent=2, ensure_ascii=False)
         if args.pages:

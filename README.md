@@ -29,6 +29,7 @@ The PDFs land in `examples/demo/build/`.
 | `build BOOK --mode review` | the finished look with small photo numbers, for proofreading |
 | `build BOOK --mode numbers` | big readable photo numbers, for feedback rounds ("Bild 037 bitte tauschen") |
 | `build ... --spreads 3-5` / `--kind opener` | render only some spreads, in seconds |
+| `check BOOK` | everything checkable without rendering: config, page count, duplicate photos |
 | `pages BOOK` | page plan with printed numbers, unplaced photos |
 | `renumber BOOK` | renumber photos through the whole book after adding/removing some |
 | `pattern-search BOOK` | find grid batch sizes that hit the product's exact page count |
@@ -117,7 +118,7 @@ The original book took about a dozen feedback rounds between two people
 
 **The loop**
 
-1. **Build a numbers PDF** – `build book.json --mode numbers`. Big photo
+1. **Build a numbers PDF** – `check book.json`, then `build book.json --mode numbers`. Big photo
    numbers, small file, easy to read on a phone or tablet. Put the round in
    the file name (`Book_numbers_round5.pdf`) so everyone knows which
    numbers a note refers to.

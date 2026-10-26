@@ -43,6 +43,7 @@ Start a new `book.json` by copying `examples/demo/book.json`.
 
 | Command | Use it for |
 |---|---|
+| `python -m photobook check BOOK` | config, page count and duplicate photos – run before sending anything to the user |
 | `python -m photobook pages BOOK` | page plan with printed numbers, unplaced photos – instant, run after every edit |
 | `python -m photobook build BOOK --mode numbers` | big readable photo numbers – send this to the user before every feedback round |
 | `python -m photobook build BOOK --mode review` | the finished look with tiny numbers, for proofreading |
@@ -160,9 +161,17 @@ building on it, and say which picks you are unsure about.
 | add a photo | add it to the manifest (idx from `recs_sorted.json`, its file to the photo map), `renumber`, `pages` |
 | other script than Latin (Greek, Cyrillic, …) or a different look | `style.font_files`, `style.dark_color` |
 
-The engine refuses references to photos that aren't in that day, duplicate
-numbers, broken spread pairing and photos drawn twice – read the error, it
-names the day and what to change. Full key reference:
+The engine refuses references to photos that aren't in that day, a photo
+with two roles, duplicate numbers, broken spread pairing, missing or
+unreadable files, text the font can't draw, and **look-alike photos** (the
+same moment twice: original and edit, a messenger copy, a burst). Read the
+error, it names the photos and what to change. Only list photos in
+`allow_duplicates` when the user wants both in the book – don't do it to
+make an error go away.
+
+New books use `"layout": 2` (staggered landscape pairs, fewer accidental
+single-photo pages). Don't switch an existing book to it without asking:
+every page after the first change point would move. Full key reference:
 `references/book_schema.md`; how each mechanism behaves on the page:
 `references/ENGINE.md`; short list of every pitfall:
 `references/LESSONS_LEARNED.md`.

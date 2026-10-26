@@ -20,7 +20,8 @@ it lived as Python constants inside two ~1,700-line copies of one script
 photobook/book.py     load + validate book.json, manifest and profile
 photobook/layout.py   plan: book -> flat list of logical pages (no image I/O)
 photobook/render.py   draw: logical pages -> PDF, set TrimBox/BleedBox
-photobook/cli.py      `python -m photobook build|pages|renumber|pattern-search|profile-from-pdf`
+photobook/similarity.py  find the same photo twice (copies, edits, bursts)
+photobook/cli.py      `python -m photobook build|check|pages|renumber|pattern-search|profile-from-pdf`
 ```
 
 ## Build modes
@@ -41,6 +42,17 @@ send without chunking.
 
 Every mode sets `/TrimBox` and `/BleedBox` from the profile, so a review
 PDF already shows exactly what the printer will cut.
+
+Speed and size, measured on a real book (42 spreads, 158 photos, 24 MP
+camera files): a 300 dpi print build takes ~45 s and ~1.3 GB of memory and
+writes ~160 MB. Images are embedded as binary JPEG streams - reportlab's
+default ASCII85 text encoding, done in pure Python, had taken 66 of 120 s
+and added a quarter to the file size. `/TrimBox` and `/BleedBox` are set
+while drawing, not in a second pass over the finished file.
+
+`python -m photobook check BOOK` runs every check that needs no rendering
+- config, page count, duplicates - in seconds; `build` runs the same
+checks first, so a problem is reported before minutes of rendering.
 
 ## Format profile
 
@@ -107,6 +119,17 @@ quietly stopped matching). The engine instead:
   invariants break, naming the day and what to change,
 - lists photos that ended up on no page (`photobook pages`).
 
+More of the same kind, each found by feeding the engine wrong input:
+
+- a photo given two roles in one day (opener *and* hero, a solo page
+  *and* a group member) - the second role used to vanish without a word,
+- a photo file that doesn't exist or can't be decoded - now named before
+  rendering instead of a traceback minutes into a build,
+- text the fonts can't draw - the built-in PDF fonts cover Western European
+  text (cp1252: „quotes“, dashes and … are fine); `Ł`, `ř` or an emoji
+  would print as a gap. Set `style.font_files` to a TTF that has the
+  characters; its glyphs are checked too.
+
 `MANUAL_GRID_ORDER` itself is gone: a fixed placement is a `groups` entry
 with style `manual3`, keyed by the photos themselves and placed at the
 chronological position of its first member, so it survives reflows.
@@ -139,6 +162,45 @@ Planning does no image I/O, so this tries hundreds of candidates per
 second and lists those hitting the page count, fewest unrequested
 single-photo pages first. Pick the one closest to the last reviewed
 pattern to minimise visual churn.
+
+### Layout rules (`layout`)
+
+`layout: 1` is the default and reproduces the original book exactly.
+`layout: 2` - written by `make_manifest.py`, used by the demo - changes two
+rules that the review of a real draft showed to be weak:
+
+- **Two landscape photos on one page** were set side by side, each in a
+  tall column that kept barely half of a 4:3 photo's width. With layout 2
+  they are staggered - first photo top left, second bottom right, each
+  60 % of the page wide - so their boxes stay close to their own shape.
+- **An odd page count** was fixed by splitting the day's first grid page,
+  so a 2-photo page became two full-page singles nobody asked for. Layout
+  2 splits the fullest page (4 photos → 2 + 2). On the real draft this
+  took the unrequested single pages of the best pattern from 7 to 3.
+
+New layout rules go behind a new `layout` value, so a book that has been
+proofread never changes under it.
+
+### Duplicates
+
+The same moment twice by accident - a camera original next to its edited
+export, a messenger copy, two copies of one file, near-identical burst
+shots - is refused unless `allow_duplicates` lists the photos together:
+
+- without looking at pixels (every load): the same idx twice in the
+  manifest, two idx with the same file, two idx with the same archive
+  entry;
+- by image (`check` and before every `build`): the edge structure of a
+  centred square crop is compared for every pair of photos in the book.
+  Edges survive colour, brightness, resolution and compression changes but
+  differ between two shots of the same view. On 1,105 photos of a real trip
+  every pair at or above 0.85 was a true copy, edit or burst shot (the
+  original book's triple selfie among them); distinct photos stayed at or
+  below ~0.3. The threshold is 0.9. A copy that was **cropped**
+  differently is not caught reliably - look out for messenger copies.
+
+Signatures are cached in `.photobook-signatures.json` next to book.json,
+so repeated builds pay for them once (~7 s for 158 photos).
 
 ### Opener, inset, hero
 

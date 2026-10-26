@@ -14,11 +14,18 @@ import zlib
 import numpy as np
 import pypdf
 from PIL import Image, ImageOps
+from reportlab import rl_config
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+
+# Embed image streams as binary instead of ASCII85 text: reportlab's
+# pure-Python ASCII85 encoder took over half of a 300 dpi build (66 of 120 s
+# for 42 spreads) and made every image a quarter larger. The JPEG data
+# itself is unchanged.
+rl_config.useA85 = 0
 
 PT_PER_MM = 72 / 25.4
 MIN_DPI_WARN = 200
@@ -133,16 +140,15 @@ class Renderer:
 
     @staticmethod
     def apply_bottom_scrim(im, strength=0.72, start_frac=0.45):
-        arr = np.asarray(im).astype(np.float32)
+        # Only the rows under the scrim are touched - converting a whole
+        # full-page photo to float32 cost several hundred MB per page.
+        arr = np.array(im)
         h = arr.shape[0]
-        ramp = np.zeros(h, dtype=np.float32)
         start = int(h * (1 - start_frac))
-        for y in range(start, h):
-            frac = (y - start) / max(1, (h - start))
-            ramp[y] = frac * strength
-        ramp = ramp[:, None, None]
-        arr = arr * (1 - ramp)
-        return Image.fromarray(np.clip(arr, 0, 255).astype('uint8'))
+        ramp = ((np.arange(start, h) - start) / max(1, (h - start)) * strength).astype(np.float32)
+        bottom = arr[start:].astype(np.float32) * (1 - ramp[:, None, None])
+        arr[start:] = np.clip(bottom, 0, 255).astype('uint8')
+        return Image.fromarray(arr)
 
     def draw_pil(self, c, im, x, y, w, h):
         buf = io.BytesIO()
@@ -152,6 +158,10 @@ class Renderer:
         # this reset it bleeds into the next image and washes it out.
         c.setFillAlpha(1)
         c.drawImage(ImageReader(buf), x, y, width=w, height=h)
+
+    def _is_landscape(self, m):
+        w, h = self._photo_size(m)
+        return w >= 1.2 * h
 
     def _photo_size(self, m):
         """Upright size, without decoding the pixels."""
@@ -286,6 +296,16 @@ class Renderer:
                     # touch the bottom one
                     self.draw_grid_item(c, m, x0, by0, w, h, label=label,
                                         bleed_left=(i == 0), bleed_bottom=True)
+                return
+            if self.book.layout >= 2 and style is None and all(self._is_landscape(m) for m in items):
+                # Two landscape photos side by side would each get a tall,
+                # narrow column and lose half their width. Staggered rows -
+                # first photo top left, second bottom right - keep boxes
+                # close to the photos' own shape.
+                w = (W - 2 * MARGIN) * 0.6
+                h = (H - 2 * MARGIN - GAP) / 2
+                self.draw_grid_item(c, items[0], bx0 + MARGIN, by0 + MARGIN + h + GAP, w, h, label=label)
+                self.draw_grid_item(c, items[1], bx1 - MARGIN - w, by0 + MARGIN, w, h, label=label)
                 return
             w = (W - 2 * MARGIN - GAP) / 2
             h = H - 2 * MARGIN
@@ -649,6 +669,8 @@ class Renderer:
             self.draw_title_page(c, bleed, trim)
         elif kind == 'front_image':
             self.draw_front_image(c, bleed, trim, label=label)
+        elif kind == 'front_photo':
+            self.draw_full_bleed(c, bleed, trim, spec[1], label=label)
         elif kind == 'opener':
             _, m, extra = spec
             self.draw_chapter_opener(c, bleed, trim, extra['day'], inset_m=extra.get('inset'), label=label)
@@ -672,6 +694,18 @@ class Renderer:
 
     # ---------- whole documents ----------
 
+    def _canvas(self, path, media, trim, bleed):
+        """A canvas whose pages carry /TrimBox and /BleedBox.
+
+        That metadata is how the printer learns where to cut. Don't merge
+        the publisher's downloadable template PDF onto the content instead:
+        those are proof sheets with visible crop/registration marks and no
+        trim metadata. MediaBox (= CropBox) is the raw format incl. bleed."""
+        c = canvas.Canvas(path, pagesize=(media[2], media[3]))
+        c.setTrimBox(tuple(trim))
+        c.setBleedBox(tuple(bleed))
+        return c
+
     def render_pages(self, pages_spec, out_path, work_dir, spreads=None):
         """Render the interior. Each spread goes into its own small PDF that
         is flushed right away - one long-lived canvas accumulated image
@@ -682,7 +716,7 @@ class Renderer:
         spread_paths = []
         for s in wanted:
             path = os.path.join(work_dir, f"spread_{s:03d}.pdf")
-            c = canvas.Canvas(path, pagesize=(self.p.pages_media[2], self.p.pages_media[3]))
+            c = self._canvas(path, self.p.pages_media, self.p.pages_trim, self.p.pages_bleed)
             self.draw_logical_page(c, pages_spec[2 * s], 'left', 2 * s)
             self.draw_logical_page(c, pages_spec[2 * s + 1], 'right', 2 * s + 1)
             c.showPage()
@@ -700,7 +734,7 @@ class Renderer:
 
     def render_cover(self, out_path):
         p, cover = self.p, self.book.cover
-        c = canvas.Canvas(out_path, pagesize=(p.cover_media[2], p.cover_media[3]))
+        c = self._canvas(out_path, p.cover_media, p.cover_trim, p.cover_bleed)
         bx0, by0, bx1, by1 = p.cover_bleed
         w, h = bx1 - bx0, by1 - by0
         crop = self.load_photo(self.book.by_idx[cover["photo"]], w, h, label="cover")
@@ -715,18 +749,3 @@ class Renderer:
         c.showPage()
         c.save()
 
-
-def set_print_boxes(pdf_path, trim_rect, bleed_rect, out_path):
-    """Set /TrimBox and /BleedBox on every page of our own rendered PDF.
-
-    Don't merge the publisher's downloadable template PDF onto the content:
-    those are proof sheets with visible crop/registration marks and no trim
-    metadata. MediaBox (= CropBox) already is the raw format incl. bleed."""
-    reader = pypdf.PdfReader(pdf_path)
-    writer = pypdf.PdfWriter()
-    for pg in reader.pages:
-        pg.trimbox = pypdf.generic.RectangleObject(trim_rect)
-        pg.bleedbox = pypdf.generic.RectangleObject(bleed_rect)
-        writer.add_page(pg)
-    with open(out_path, 'wb') as f:
-        writer.write(f)
