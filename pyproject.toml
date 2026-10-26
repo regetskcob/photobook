@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photobook"
+version = "0.1.0"
+description = "Turns a curated photo selection plus a book.json into print-ready photobook PDFs."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "reportlab>=4.0",
+    "pillow>=9.1",
+    "numpy>=1.21",
+    "pypdf>=3.0",
+]
+
+[project.scripts]
+photobook = "photobook.cli:main"
+
+[tool.setuptools]
+packages = ["photobook"]

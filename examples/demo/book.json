@@ -1,0 +1,72 @@
+{
+  "pages": 28,
+  "profile": "saal_professional_30x21_landscape",
+  "pattern": [2, 3],
+  "manifest": "final_manifest.json",
+  "output_prefix": "Demo",
+  "day_label": "Day {n}",
+  "cover": {
+    "photo": 2,
+    "title": "DEMO TRIP",
+    "subtitle": "A placeholder book · 4 days"
+  },
+  "front": {
+    "title": "DEMO TRIP",
+    "tagline": "EVERY LAYOUT MECHANISM ON A FEW PAGES",
+    "intro": [
+      "This book is built from generated test cards instead of real photos. Each card shows its idx and its printed number.",
+      "Copy this folder as the starting point for a real book."
+    ],
+    "image": "photos/map.jpg"
+  },
+  "days": [
+    {
+      "id": "day1",
+      "title": "Arrival",
+      "date": "Friday, 1 May",
+      "intro": ["The day-intro paragraph sits on the chapter opener, left of the small inset photo."],
+      "opener": 2,
+      "hero": {"photo": 8, "caption": "A captioned full-page highlight"},
+      "groups": [{"photos": [4, 5, 6], "style": "mirror3"}]
+    },
+    {
+      "id": "day2",
+      "title": "Panoramas and text",
+      "date": "Saturday, 2 May",
+      "intro": [
+        "A day can open with a two-page panorama, or carry one at its chronological position mid-day.",
+        "Grid cells can show a paragraph of text instead of a photo."
+      ],
+      "opener": 21,
+      "inset": 23,
+      "mid_day_panorama": 25,
+      "hero": {"photo": 28, "caption": ["A two-line caption", "with a lighter second line"]},
+      "groups": [{"photos": [22, 20, 24], "style": "portrait3"}]
+    },
+    {
+      "id": "day3",
+      "title": "Edge to edge",
+      "date": "Sunday, 3 May",
+      "intro": ["Pages that bleed into the trim area, and a photo forced onto its own page."],
+      "opener": 40,
+      "inset": 47,
+      "solo_fullbleed": [44],
+      "groups": [{"photos": [42, 43], "style": "bleed2"}, {"photos": [45, 41, 46], "style": "manual3"}]
+    }
+  ],
+  "closing": {
+    "photo": 60,
+    "caption": "The last photo, on the closing spread",
+    "lead": "A lead-in line above the headline.",
+    "headline": "See you next time!",
+    "date": "Next trip: 2027"
+  },
+  "photos": {
+    "3": {"caption": "A caption on a grid photo"},
+    "7": {"crop": "top"},
+    "9": {"text": "A text slot: this grid cell shows a paragraph instead of photo 9. With text_companion, the photo itself comes back as a square below the text.", "text_companion": true},
+    "25": {"spread_caption": "A mid-day panorama across both pages"},
+    "26": {"text": "A right-aligned text slot reads flush against the photo next to it.", "text_align": "right"},
+    "43": {"caption": "Captions on bleeding photos keep clear of the cut line"}
+  }
+}

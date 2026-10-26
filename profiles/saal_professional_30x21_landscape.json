@@ -1,0 +1,15 @@
+{
+  "name": "Saal Digital Professional Line, 30x21 cm landscape",
+  "source": "Measured from the publisher's InDesign template, exported as 'raw format incl. bleed, no marks' (not from the downloadable proof-sheet PDFs, which carry visible marks and no TrimBox).",
+  "notes": "All boxes in PDF points, [x0, y0, x1, y1]. Interior: one PDF page per double-page spread, 3 mm bleed all around. Cover: 20 mm extra on the left (spine/wrap allowance), 3 mm elsewhere. The bleed box is the full media box.",
+  "cover": {
+    "media": [0, 0, 825.037, 612.448],
+    "trim": [56.6929, 8.50394, 816.533, 603.944],
+    "bleed": [0, 0, 825.037, 612.448]
+  },
+  "pages": {
+    "media": [0, 0, 1683.78, 595.276],
+    "trim": [8.50394, 8.50394, 1675.28, 586.772],
+    "bleed": [0, 0, 1683.78, 595.276]
+  }
+}
